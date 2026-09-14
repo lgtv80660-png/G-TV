@@ -4,6 +4,7 @@ import React, { useMemo, useCallback, useState } from "react";
 import { PosterCard } from "./PosterCard";
 import { FilterBar } from "./FilterBar";
 import { SortKey } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 interface CatalogBrowserProps {
   items: any[];
@@ -18,6 +19,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
   type,
   loading = false,
 }) => {
+  const router = useRouter();
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [sortKey, setSortKey] = useState<SortKey>("added");
@@ -34,7 +36,6 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
     setSortKey(s);
   }, []);
 
-  // Filtrage et tri mémorisés pour éviter les boucles d'effets et le freeze UI
   const filteredItems = useMemo(() => {
     if (!items || !Array.isArray(items)) return [];
 
@@ -59,12 +60,18 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
     return result;
   }, [items, selectedCategory, searchQuery, sortKey]);
 
-  // Générateur d'URL selon le type de contenu
   const getHref = (item: any) => {
     const id = item.series_id || item.stream_id || item.id;
+    const ext = item.container_extension || "mp4";
+    
     if (type === "series") return `/series/${id}`;
-    if (type === "movies") return `/movies/${id}`;
-    return `/watch?type=live&id=${id}`;
+    if (type === "movies") return `/watch?type=movie&id=${id}&ext=${ext}`;
+    return `/watch?type=live&id=${id}&ext=ts`;
+  };
+
+  const handleItemClick = (item: any) => {
+    const href = getHref(item);
+    router.push(href);
   };
 
   if (loading) {
@@ -94,13 +101,13 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {/* Limitation à 120 éléments pour alléger le rendu initial du DOM */}
           {filteredItems.slice(0, 120).map((item, index) => (
             <PosterCard
               key={item.series_id || item.stream_id || item.id}
               item={item}
               href={getHref(item)}
               index={index}
+              onPlay={() => handleItemClick(item)}
             />
           ))}
         </div>
