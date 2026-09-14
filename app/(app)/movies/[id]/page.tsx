@@ -8,6 +8,44 @@ import { Play, ArrowLeft, Star, Heart, X, User, Film } from "lucide-react";
 import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
+// Composant pour chaque acteur avec fetching de photo TMDB
+const ActorCard = ({ name }: { name: string }) => {
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    // Recherche de la photo de l'acteur sur TMDB (API publique)
+    fetch(
+      `https://api.themoviedb.org/3/search/person?api_key=15d260044e2614e361e09315def00661&query=${encodeURIComponent(
+        name
+      )}`
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted && data?.results?.[0]?.profile_path) {
+          setPhotoUrl(`https://image.tmdb.org/t/p/w185${data.results[0].profile_path}`);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [name]);
+
+  return (
+    <div className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03] border border-white/5 hover:border-indigo-500/30 transition-all">
+      <div className="w-10 h-10 rounded-full overflow-hidden bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 flex-shrink-0">
+        {photoUrl ? (
+          <img src={photoUrl} alt={name} className="w-full h-full object-cover" />
+        ) : (
+          <User className="w-4 h-4" />
+        )}
+      </div>
+      <span className="text-xs font-medium text-zinc-200 truncate">{name}</span>
+    </div>
+  );
+};
+
 export default function MovieDetailPage() {
   const { id } = useParams();
   const [movieInfo, setMovieInfo] = useState<any>(null);
@@ -44,14 +82,12 @@ export default function MovieDetailPage() {
   const isFavorite = isFav("movie", Number(streamId));
   const movieTitle = info.name || info.title || "Film";
 
-  // Extraction et découpage de la liste des acteurs
   const castList = info.cast
     ? info.cast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : [];
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-6 space-y-6">
-      {/* Top bar */}
       <div className="flex items-center justify-between">
         <Link
           href="/movies"
@@ -76,7 +112,6 @@ export default function MovieDetailPage() {
         </button>
       </div>
 
-      {/* Hero Header */}
       <div className="relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[240px] flex items-end p-6">
         {backdropUrl && (
           <div className="absolute inset-0 z-0">
@@ -131,9 +166,7 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
-      {/* Main Layout (2 Colonnes) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Aperçu Vidéo (Lecteur à gauche) */}
         {isPlaying && (
           <div className="lg:col-span-5 space-y-3 bg-[#12141c] border border-white/10 rounded-2xl p-4 sticky top-6 shadow-2xl">
             <div className="flex items-center justify-between">
@@ -163,19 +196,14 @@ export default function MovieDetailPage() {
           </div>
         )}
 
-        {/* Section Synopsis, Biographie & Acteurs à droite */}
         <div className={isPlaying ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
-          
-          {/* Bio / Synopsis */}
           <div className="bg-[#12141c] border border-white/5 rounded-2xl p-6 space-y-4">
             <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
               <Film className="w-4 h-4 text-indigo-400" /> Synopsis & Histoire
             </h3>
-            
             <p className="text-xs text-zinc-300 leading-relaxed">
-              {info.description || info.plot || "Aucun résumé disponible pour ce film."}
+              {info.description || info.plot || "Aucun résumé disponible."}
             </p>
-
             {info.director && (
               <div className="pt-3 border-t border-white/5 text-xs text-zinc-400">
                 <span className="text-zinc-500 font-semibold">Réalisateur : </span>
@@ -184,31 +212,18 @@ export default function MovieDetailPage() {
             )}
           </div>
 
-          {/* Liste des Acteurs */}
           {castList.length > 0 && (
             <div className="bg-[#12141c] border border-white/5 rounded-2xl p-6 space-y-4">
               <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                 <User className="w-4 h-4 text-indigo-400" /> Casting / Acteurs
               </h3>
-
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {castList.map((actor: string, idx: number) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-indigo-500/30 transition-all"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 flex-shrink-0">
-                      <User className="w-4 h-4" />
-                    </div>
-                    <span className="text-xs font-medium text-zinc-200 truncate">
-                      {actor}
-                    </span>
-                  </div>
+                  <ActorCard key={idx} name={actor} />
                 ))}
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>
