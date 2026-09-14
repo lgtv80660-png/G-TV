@@ -4,6 +4,8 @@ import React, { useMemo, useCallback, useState } from "react";
 import { PosterCard } from "./PosterCard";
 import { FilterBar } from "./FilterBar";
 
+type SortKey = "added" | "name" | "rating";
+
 interface CatalogBrowserProps {
   items: any[];
   categories: any[];
@@ -19,8 +21,8 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [sortKey, setSortKey] = useState<SortKey>("added");
 
-  // Handler mémorisé pour éviter la réinstanciation à chaque rendu
   const handleCategoryChange = useCallback((categoryId: string) => {
     setSelectedCategory(categoryId);
   }, []);
@@ -29,11 +31,15 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
     setSearchQuery(query);
   }, []);
 
-  // Filtrage mémorisé pour éviter les boucles d'effets et calculs lourds inutiles
+  const handleSortChange = useCallback((s: SortKey) => {
+    setSortKey(s);
+  }, []);
+
+  // Filtrage et tri mémorisés pour éviter tout re-rendu inutile ou freeze de l'UI
   const filteredItems = useMemo(() => {
     if (!items || !Array.isArray(items)) return [];
-    
-    return items.filter((item) => {
+
+    let result = items.filter((item) => {
       const matchesCategory =
         selectedCategory === "all" ||
         String(item.category_id) === String(selectedCategory);
@@ -44,7 +50,15 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
 
       return matchesCategory && matchesSearch;
     });
-  }, [items, selectedCategory, searchQuery]);
+
+    if (sortKey === "name") {
+      result = [...result].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    } else if (sortKey === "rating") {
+      result = [...result].sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0));
+    }
+
+    return result;
+  }, [items, selectedCategory, searchQuery, sortKey]);
 
   if (loading) {
     return (
@@ -58,10 +72,13 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
     <div className="space-y-6">
       <FilterBar
         categories={categories}
-        selectedCategory={selectedCategory}
-        onSelectCategory={handleCategoryChange}
-        searchQuery={searchQuery}
-        onSearchChange={handleSearchChange}
+        activeCategory={selectedCategory}
+        onCategory={handleCategoryChange}
+        query={searchQuery}
+        onQuery={handleSearchChange}
+        sort={sortKey}
+        onSort={handleSortChange}
+        count={filteredItems.length}
       />
 
       {filteredItems.length === 0 ? (
@@ -70,9 +87,13 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {/* Limitation / découpage du rendu initial pour éviter de geler l'UI si la liste est immense */}
-          {filteredItems.slice(0, 100).map((item) => (
-            <PosterCard key={item.series_id || item.stream_id || item.id} item={item} type={type} />
+          {/* Limitation à 120 éléments au rendu initial pour alléger la charge du navigateur */}
+          {filteredItems.slice(0, 120).map((item) => (
+            <PosterCard
+              key={item.series_id || item.stream_id || item.id}
+              item={item}
+              type={type}
+            />
           ))}
         </div>
       )}
