@@ -41,7 +41,6 @@ export default function SeriesDetailPage() {
   const episodesBySeason = seriesInfo?.episodes || {};
   const currentEpisodes = episodesBySeason[activeSeason] || [];
 
-  // Détection de l'image de fond (backdrop) ou fallback sur le cover
   const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover;
 
   return (
@@ -54,9 +53,8 @@ export default function SeriesDetailPage() {
         <ArrowLeft className="w-3.5 h-3.5" /> Retour aux séries
       </Link>
 
-      {/* Hero Header d'origine avec image de fond et dégradé */}
+      {/* Hero Header */}
       <div className="relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[260px] flex items-end p-6">
-        {/* Arrière-plan flouté / backdrop */}
         {backdropUrl && (
           <div className="absolute inset-0 z-0">
             <img
@@ -69,7 +67,6 @@ export default function SeriesDetailPage() {
           </div>
         )}
 
-        {/* Contenu Header */}
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-6 w-full">
           {info.cover && (
             <img
@@ -111,10 +108,10 @@ export default function SeriesDetailPage() {
         </div>
       </div>
 
-      {/* Section Principale : Aperçu Vidéo (Gauche) + Épisodes (Droite) */}
+      {/* Grid avec Lecteur et Liste */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        {/* Lecteur d'aperçu latéral */}
+        {/* Aperçu Épisode */}
         {activeEpisode && (
           <div className="lg:col-span-5 space-y-3 bg-[#12141c] border border-white/10 rounded-2xl p-4 sticky top-6 shadow-2xl">
             <div className="flex items-center justify-between">
@@ -130,14 +127,17 @@ export default function SeriesDetailPage() {
               </button>
             </div>
 
+            {/* FIXE DU LECTEUR: Aspect Ratio 16/9 forcé + conteneur absolu */}
             <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5">
-              <VideoPlayer
-                key={activeEpisode.id}
-                sources={[`/api/stream?type=series&id=${activeEpisode.id}&ext=${activeEpisode.container_extension || "mp4"}`]}
-                ext={activeEpisode.container_extension || "mp4"}
-                isLive={false}
-                title={`${info.name} - S${activeEpisode.season}E${activeEpisode.episode_num} - ${activeEpisode.title}`}
-              />
+              <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
+                <VideoPlayer
+                  key={activeEpisode.id}
+                  sources={[`/api/stream?type=series&id=${activeEpisode.id}&ext=${activeEpisode.container_extension || "mp4"}`]}
+                  ext={activeEpisode.container_extension || "mp4"}
+                  isLive={false}
+                  title={`${info.name} - S${activeEpisode.season}E${activeEpisode.episode_num} - ${activeEpisode.title}`}
+                />
+              </div>
             </div>
 
             <p className="text-xs font-semibold text-zinc-200 line-clamp-1">
@@ -146,10 +146,9 @@ export default function SeriesDetailPage() {
           </div>
         )}
 
-        {/* Navigation des Saisons et Épisodes */}
+        {/* Épisodes */}
         <div className={activeEpisode ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
           
-          {/* Onglets Saisons violet d'origine */}
           <div className="flex gap-2 overflow-x-auto pb-1">
             {Object.keys(episodesBySeason).map((seasonNum) => {
               const isActive = activeSeason === seasonNum;
@@ -169,7 +168,6 @@ export default function SeriesDetailPage() {
             })}
           </div>
 
-          {/* Liste des épisodes */}
           <div className="space-y-2.5">
             {currentEpisodes.map((ep: any) => {
               const isSelected = activeEpisode?.id === ep.id;
