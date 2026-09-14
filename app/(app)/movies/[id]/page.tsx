@@ -1,107 +1,172 @@
 "use client";
 
-import Link from "next/link";
+import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { Play, Star, Clock, Calendar } from "lucide-react";
-import { DetailHero } from "@/components/catalog/DetailHero";
-import { Skeleton } from "@/components/ui/Skeleton";
-import { useVodInfo } from "@/lib/hooks";
+import { api } from "@/lib/api";
+import { VideoPlayer } from "@/components/player/VideoPlayer";
+import { Play, ArrowLeft, Star, Heart, X } from "lucide-react";
+import Link from "next/link";
 import { useLibrary } from "@/store/library";
-import { ratingNum, yearFrom, cleanName } from "@/lib/utils";
 
 export default function MovieDetailPage() {
-  const { id } = useParams<{ id: string }>();
-  const { data, isLoading, isError } = useVodInfo(id);
-  const { isFav, toggleFav, progress } = useLibrary();
+  const { id } = useParams();
+  const [movieInfo, setMovieInfo] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
 
-  if (isLoading) return <DetailSkeleton />;
-  if (isError || !data) return <p className="px-8 py-24 text-center text-red-300">Couldn’t load this title.</p>;
+  const { toggleFav, isFav } = useLibrary();
 
-  const info = data.info;
-  const md = data.movie_data;
-  const title = md?.name || (info?.name as string) || "Movie";
-  const ext = md?.container_extension || "mp4";
-  const rating = ratingNum(info?.rating);
-  const year = yearFrom(info?.releasedate, md?.added);
-  const fav = isFav("movie", Number(id));
+  useEffect(() => {
+    if (!id) return;
+    api
+      .vodInfo(id as string)
+      .then((data) => {
+        setMovieInfo(data);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [id]);
 
-  const key = `movie:${id}`;
-  const resume = progress[key]?.position ?? 0;
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-[#0b0c10]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    );
+  }
 
-  const playHref = `/watch?type=movie&id=${id}&ext=${ext}&title=${encodeURIComponent(cleanName(title))}${resume > 15 ? `&resume=${Math.floor(resume)}` : ""}`;
+  const info = movieInfo?.info || movieInfo?.movie_data || {};
+  const vodData = movieInfo?.movie_data || {};
+  const streamId = vodData.stream_id || info.stream_id || id;
+  const containerExt = vodData.container_extension || info.container_extension || "mp4";
+
+  const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
+  const isFavorite = isFav("movie", Number(streamId));
 
   return (
-    <DetailHero
-      backdrop={info?.backdrop_path?.[0]}
-      poster={info?.movie_image}
-      title={title}
-      fav={fav}
-      onToggleFav={() =>
-        toggleFav("movie", { id: Number(id), name: cleanName(title), poster: info?.movie_image, ext })
-      }
-    >
-      <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{cleanName(title)}</h1>
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-fog-300">
-        {rating > 0 && (
-          <span className="flex items-center gap-1 font-semibold text-iris-300">
-            <Star className="h-4 w-4 fill-iris-300" /> {rating.toFixed(1)}
-          </span>
-        )}
-        {year && (
-          <span className="flex items-center gap-1">
-            <Calendar className="h-4 w-4" /> {year}
-          </span>
-        )}
-        {info?.duration && (
-          <span className="flex items-center gap-1">
-            <Clock className="h-4 w-4" /> {info.duration}
-          </span>
-        )}
-        {info?.genre && <span className="text-fog-400">{info.genre}</span>}
-      </div>
-
-      <div className="mt-6">
+    <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-6 space-y-6">
+      {/* Top bar avec boutons Retour et Favoris */}
+      <div className="flex items-center justify-between">
         <Link
-          href={playHref}
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-iris-300 to-iris-500 px-7 py-3 font-semibold text-ink-950 transition-transform hover:scale-[1.03]"
+          href="/movies"
+          className="inline-flex items-center gap-2 text-xs text-zinc-400 hover:text-white transition-colors"
         >
-          <Play className="h-5 w-5 fill-ink-950" /> {resume > 15 ? "Resume" : "Play"}
+          <ArrowLeft className="w-3.5 h-3.5" /> Back
         </Link>
+        <button
+          onClick={() =>
+            toggleFav("movie", {
+              id: Number(streamId),
+              name: info.name || info.title,
+              poster: info.movie_image || info.cover_big,
+              ext: containerExt,
+            })
+          }
+          className={`p-2 rounded-full border border-white/10 backdrop-blur-md transition-colors ${
+            isFavorite ? "bg-rose-500/20 text-rose-500 border-rose-500/30" : "bg-white/5 text-zinc-400 hover:text-white"
+          }`}
+        >
+          <Heart className={`w-4 h-4 ${isFavorite ? "fill-current" : ""}`} />
+        </button>
       </div>
 
-      {info?.plot && <p className="mt-6 max-w-2xl text-sm leading-relaxed text-fog-300">{info.plot}</p>}
+      {/* Banner / Hero section du film */}
+      <div className="relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[320px] flex items-end p-6">
+        {backdropUrl && (
+          <div className="absolute inset-0 z-0">
+            <img
+              src={backdropUrl}
+              alt=""
+              className="w-full h-full object-cover opacity-35 filter blur-[2px]"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#0b0c10] via-[#0b0c10]/80 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0b0c10] via-transparent to-transparent" />
+          </div>
+        )}
 
-      <dl className="mt-6 grid max-w-2xl grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
-        {info?.cast && <Meta label="Cast" value={info.cast} />}
-        {info?.director && <Meta label="Director" value={info.director} />}
-        {info?.releasedate && <Meta label="Released" value={info.releasedate} />}
-      </dl>
-    </DetailHero>
-  );
-}
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-6 w-full">
+          {(info.movie_image || info.cover_big) && (
+            <img
+              src={info.movie_image || info.cover_big}
+              alt={info.name}
+              className="w-40 aspect-[2/3] object-cover rounded-xl shadow-2xl border border-white/10 flex-shrink-0"
+            />
+          )}
 
-function Meta({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex gap-2">
-      <dt className="shrink-0 text-fog-500">{label}:</dt>
-      <dd className="line-clamp-2 text-fog-300">{value}</dd>
-    </div>
-  );
-}
+          <div className="space-y-3 flex-1">
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">
+              {info.name || info.title} {info.releasedate || info.year ? `(${info.releasedate?.slice(0, 4) || info.year})` : ""}
+            </h1>
 
-function DetailSkeleton() {
-  return (
-    <div className="px-5 pt-40 sm:px-8">
-      <div className="flex gap-6">
-        <Skeleton className="hidden aspect-[2/3] w-44 sm:block" />
-        <div className="flex-1 space-y-4">
-          <Skeleton className="h-9 w-2/3" />
-          <Skeleton className="h-4 w-1/3" />
-          <Skeleton className="h-11 w-40 rounded-xl" />
-          <Skeleton className="h-24 w-full max-w-2xl" />
+            <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 font-medium">
+              {info.rating && (
+                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2.5 py-1 rounded-md flex items-center gap-1 font-semibold">
+                  <Star className="w-3 h-3 fill-current" /> {info.rating}
+                </span>
+              )}
+              {info.releasedate && (
+                <span className="bg-white/5 border border-white/10 px-2.5 py-1 rounded-md">
+                  {info.releasedate}
+                </span>
+              )}
+              {info.genre && <span className="text-zinc-400">• {info.genre}</span>}
+            </div>
+
+            {/* Bouton Play qui déclenche la lecture Aperçu sur place */}
+            {!isPlaying && (
+              <button
+                onClick={() => setIsPlaying(true)}
+                className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:scale-105"
+              >
+                <Play className="w-4 h-4 fill-current translate-x-0.5" />
+                Play
+              </button>
+            )}
+
+            {info.description || info.plot ? (
+              <p className="text-xs text-zinc-300/90 max-w-4xl leading-relaxed line-clamp-3">
+                {info.description || info.plot}
+              </p>
+            ) : null}
+
+            <div className="text-[11px] text-zinc-400 space-y-1">
+              {info.cast && <p><span className="text-zinc-500">Cast:</span> {info.cast}</p>}
+              {info.director && <p><span className="text-zinc-500">Director:</span> {info.director}</p>}
+              {info.releasedate && <p><span className="text-zinc-500">Released:</span> {info.releasedate}</p>}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Cadre du Lecteur Vidéo Aperçu Embarqué */}
+      {isPlaying && (
+        <div className="space-y-3 bg-[#12141c] border border-white/10 rounded-2xl p-4 shadow-2xl animate-in fade-in duration-300">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-400">
+              Aperçu - {info.name || info.title}
+            </h2>
+            <button
+              onClick={() => setIsPlaying(false)}
+              className="text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+              title="Fermer le lecteur"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5">
+            <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
+              <VideoPlayer
+                key={streamId}
+                sources={[`/api/stream?type=movie&id=${streamId}&ext=${containerExt}`]}
+                ext={containerExt}
+                isLive={false}
+                title={info.name || info.title || "Film"}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
