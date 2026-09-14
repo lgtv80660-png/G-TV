@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { Play, ArrowLeft, Star, Heart, X } from "lucide-react";
+import { Play, ArrowLeft, Star, Heart, X, User, Film } from "lucide-react";
 import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
@@ -44,9 +44,14 @@ export default function MovieDetailPage() {
   const isFavorite = isFav("movie", Number(streamId));
   const movieTitle = info.name || info.title || "Film";
 
+  // Extraction et découpage de la liste des acteurs
+  const castList = info.cast
+    ? info.cast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
+    : [];
+
   return (
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-6 space-y-6">
-      {/* Top bar avec boutons Retour et Favoris */}
+      {/* Top bar */}
       <div className="flex items-center justify-between">
         <Link
           href="/movies"
@@ -71,7 +76,7 @@ export default function MovieDetailPage() {
         </button>
       </div>
 
-      {/* Header Banner du film */}
+      {/* Hero Header */}
       <div className="relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[240px] flex items-end p-6">
         {backdropUrl && (
           <div className="absolute inset-0 z-0">
@@ -126,9 +131,9 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
-      {/* Grid 2 colonnes comme pour les séries : Petit lecteur à gauche (col-span-5) + Détails à droite (col-span-7) */}
+      {/* Main Layout (2 Colonnes) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Lecteur Aperçu à Gauche */}
+        {/* Aperçu Vidéo (Lecteur à gauche) */}
         {isPlaying && (
           <div className="lg:col-span-5 space-y-3 bg-[#12141c] border border-white/10 rounded-2xl p-4 sticky top-6 shadow-2xl">
             <div className="flex items-center justify-between">
@@ -158,40 +163,52 @@ export default function MovieDetailPage() {
           </div>
         )}
 
-        {/* Fiche d'information du film à Droite */}
+        {/* Section Synopsis, Biographie & Acteurs à droite */}
         <div className={isPlaying ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
+          
+          {/* Bio / Synopsis */}
           <div className="bg-[#12141c] border border-white/5 rounded-2xl p-6 space-y-4">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-              Synopsis & Détails
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Film className="w-4 h-4 text-indigo-400" /> Synopsis & Histoire
             </h3>
             
-            {info.description || info.plot ? (
-              <p className="text-xs text-zinc-300 leading-relaxed">
-                {info.description || info.plot}
-              </p>
-            ) : null}
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              {info.description || info.plot || "Aucun résumé disponible pour ce film."}
+            </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-zinc-400 pt-2 border-t border-white/5">
-              {info.cast && (
-                <div>
-                  <span className="text-zinc-500 block font-semibold mb-0.5">Cast:</span>
-                  <span>{info.cast}</span>
-                </div>
-              )}
-              {info.director && (
-                <div>
-                  <span className="text-zinc-500 block font-semibold mb-0.5">Director:</span>
-                  <span>{info.director}</span>
-                </div>
-              )}
-              {info.releasedate && (
-                <div>
-                  <span className="text-zinc-500 block font-semibold mb-0.5">Released:</span>
-                  <span>{info.releasedate}</span>
-                </div>
-              )}
-            </div>
+            {info.director && (
+              <div className="pt-3 border-t border-white/5 text-xs text-zinc-400">
+                <span className="text-zinc-500 font-semibold">Réalisateur : </span>
+                <span className="text-zinc-200">{info.director}</span>
+              </div>
+            )}
           </div>
+
+          {/* Liste des Acteurs */}
+          {castList.length > 0 && (
+            <div className="bg-[#12141c] border border-white/5 rounded-2xl p-6 space-y-4">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <User className="w-4 h-4 text-indigo-400" /> Casting / Acteurs
+              </h3>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {castList.map((actor: string, idx: number) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-indigo-500/30 transition-all"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 flex-shrink-0">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <span className="text-xs font-medium text-zinc-200 truncate">
+                      {actor}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
