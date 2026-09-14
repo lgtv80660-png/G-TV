@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 
 export interface PosterItem {
   id?: string | number;
@@ -10,6 +9,7 @@ export interface PosterItem {
   stream_id?: string | number;
   name?: string;
   title?: string;
+  subtitle?: string;
   cover?: string;
   stream_icon?: string;
   poster?: string;
@@ -29,16 +29,15 @@ export const PosterCard: React.FC<PosterCardProps> = ({ item, href }) => {
 
   const title = item.name || item.title || "Titre inconnu";
   
-  // Extraction dynamique de la bonne URL d'image selon ce que renvoie l'API Xtream
+  // Extraction dynamique de l'URL de l'image (couverture série, VOD ou poster)
   let imageUrl = item.cover || item.stream_icon || item.poster || "";
 
-  // Si l'URL commence par http:// et que vous êtes en HTTPS, vous pouvez utiliser un proxy ou autoriser HTTP
+  // Proxy temporaire pour contourner le blocage Mixed Content (HTTP sur HTTPS)
   if (imageUrl && imageUrl.startsWith("http://")) {
-    // Évite le blocage du contenu mixte (Mixed Content) par le navigateur
     imageUrl = `/api/hls?u=${encodeURIComponent(imageUrl)}`;
   }
 
-  // Génération des initiales pour le placeholder fallback
+  // Fallback initiales si pas d'image
   const initials = title
     .split(" ")
     .slice(0, 2)
@@ -71,8 +70,10 @@ export const PosterCard: React.FC<PosterCardProps> = ({ item, href }) => {
         <h3 className="line-clamp-1 text-sm font-semibold text-foreground group-hover:text-primary">
           {title}
         </h3>
-        {item.year && (
-          <p className="text-xs text-muted-foreground">{item.year}</p>
+        {item.subtitle ? (
+          <p className="text-xs text-muted-foreground">{item.subtitle}</p>
+        ) : (
+          item.year && <p className="text-xs text-muted-foreground">{item.year}</p>
         )}
       </div>
     </Link>
