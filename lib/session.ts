@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import type { XtreamCredentials } from "./xtream/types";
 
-const COOKIE = "lumen_session";
+const COOKIE = "G-TV_session";
 const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 // ⚠️ DEFINISSEZ VOTRE SERVEUR XTREAM ICI :
