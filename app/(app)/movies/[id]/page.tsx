@@ -8,22 +8,17 @@ import { Play, ArrowLeft, Star, Heart, X, User, Film } from "lucide-react";
 import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
-// Composant pour chaque acteur avec fetching de photo TMDB
+// Composant ActorCard avec appel à l'API proxy interne
 const ActorCard = ({ name }: { name: string }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
-    // Recherche de la photo de l'acteur sur TMDB (API publique)
-    fetch(
-      `https://api.themoviedb.org/3/search/person?api_key=15d260044e2614e361e09315def00661&query=${encodeURIComponent(
-        name
-      )}`
-    )
+    fetch(`/api/actor-photo?name=${encodeURIComponent(name)}`)
       .then((res) => res.json())
       .then((data) => {
-        if (isMounted && data?.results?.[0]?.profile_path) {
-          setPhotoUrl(`https://image.tmdb.org/t/p/w185${data.results[0].profile_path}`);
+        if (isMounted && data?.photoUrl) {
+          setPhotoUrl(data.photoUrl);
         }
       })
       .catch(() => {});
@@ -33,7 +28,7 @@ const ActorCard = ({ name }: { name: string }) => {
   }, [name]);
 
   return (
-    <div className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03] border border-white/5 hover:border-indigo-500/30 transition-all">
+    <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-indigo-500/30 transition-all">
       <div className="w-10 h-10 rounded-full overflow-hidden bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 flex-shrink-0">
         {photoUrl ? (
           <img src={photoUrl} alt={name} className="w-full h-full object-cover" />
