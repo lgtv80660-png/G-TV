@@ -13,6 +13,7 @@ export interface PosterItem {
   cover?: string;
   stream_icon?: string;
   poster?: string;
+  rating?: string | number;
   year?: string | number;
   releaseDate?: string;
 }
@@ -32,12 +33,12 @@ export const PosterCard: React.FC<PosterCardProps> = ({ item, href }) => {
   // Extraction dynamique de l'URL de l'image (couverture série, VOD ou poster)
   let imageUrl = item.cover || item.stream_icon || item.poster || "";
 
-  // Proxy temporaire pour contourner le blocage Mixed Content (HTTP sur HTTPS)
+  // Proxy pour contourner le blocage Mixed Content (HTTP sur HTTPS)
   if (imageUrl && imageUrl.startsWith("http://")) {
     imageUrl = `/api/hls?u=${encodeURIComponent(imageUrl)}`;
   }
 
-  // Fallback initiales si pas d'image
+  // Fallback initiales si l'image est absente ou en erreur
   const initials = title
     .split(" ")
     .slice(0, 2)
