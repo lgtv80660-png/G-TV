@@ -4,39 +4,84 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { Play, ArrowLeft, Star, Heart, X, User, Film } from "lucide-react";
+import { Play, ArrowLeft, Star, Heart, X, User, Film, Info } from "lucide-react";
 import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
-// Composant ActorCard avec appel à l'API proxy interne
-const ActorCard = ({ name }: { name: string }) => {
+// Carte d'acteur interactive avec effet 3D Flip (recto/verso)
+const FlipActorCard = ({ name }: { name: string }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [bio, setBio] = useState<string>("Chargement...");
+  const [isFlipped, setIsFlipped] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
     fetch(`/api/actor-photo?name=${encodeURIComponent(name)}`)
       .then((res) => res.json())
       .then((data) => {
-        if (isMounted && data?.photoUrl) {
-          setPhotoUrl(data.photoUrl);
+        if (isMounted) {
+          if (data?.photoUrl) setPhotoUrl(data.photoUrl);
+          if (data?.bio) setBio(data.bio);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (isMounted) setBio("Information non disponible.");
+      });
     return () => {
       isMounted = false;
     };
   }, [name]);
 
   return (
-    <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-indigo-500/30 transition-all">
-      <div className="w-10 h-10 rounded-full overflow-hidden bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 flex-shrink-0">
-        {photoUrl ? (
-          <img src={photoUrl} alt={name} className="w-full h-full object-cover" />
-        ) : (
-          <User className="w-4 h-4" />
-        )}
+    <div
+      onClick={() => setIsFlipped(!isFlipped)}
+      className="group perspective w-36 h-52 flex-shrink-0 cursor-pointer select-none"
+    >
+      <div
+        className={`relative w-full h-full rounded-2xl transition-transform duration-500 transform-style-3d ${
+          isFlipped ? "rotate-y-180" : "group-hover:scale-105"
+        }`}
+      >
+        {/* RECTO : Grande Photo + Nom */}
+        <div className="absolute inset-0 w-full h-full rounded-2xl overflow-hidden bg-[#181a24] border border-white/10 shadow-lg backface-hidden flex flex-col justify-end">
+          {photoUrl ? (
+            <img
+              src={photoUrl}
+              alt={name}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-indigo-950/40 text-indigo-400">
+              <User className="w-12 h-12" />
+            </div>
+          )}
+
+          {/* Dégradé sombre sous le nom */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+
+          <div className="relative z-10 p-3 flex items-center justify-between">
+            <span className="text-xs font-bold text-white line-clamp-1">
+              {name}
+            </span>
+            <Info className="w-3.5 h-3.5 text-indigo-400 opacity-70 flex-shrink-0" />
+          </div>
+        </div>
+
+        {/* VERSO : Biographie */}
+        <div className="absolute inset-0 w-full h-full rounded-2xl p-3 bg-gradient-to-br from-indigo-950 to-[#12141c] border border-indigo-500/40 text-white backface-hidden rotate-y-180 flex flex-col justify-between shadow-xl">
+          <div className="space-y-1.5 overflow-hidden">
+            <p className="text-[11px] font-bold text-indigo-300 line-clamp-1">
+              {name}
+            </p>
+            <p className="text-[10px] text-zinc-300 leading-snug line-clamp-6">
+              {bio}
+            </p>
+          </div>
+          <span className="text-[9px] text-zinc-500 italic self-end">
+            Cliquez pour retourner
+          </span>
+        </div>
       </div>
-      <span className="text-xs font-medium text-zinc-200 truncate">{name}</span>
     </div>
   );
 };
@@ -83,6 +128,22 @@ export default function MovieDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-6 space-y-6">
+      <style jsx global>{`
+        .perspective {
+          perspective: 1000px;
+        }
+        .transform-style-3d {
+          transform-style: preserve-3d;
+        }
+        .backface-hidden {
+          backface-visibility: hidden;
+        }
+        .rotate-y-180 {
+          transform: rotateY(180deg);
+        }
+      `}</style>
+
+      {/* Top Bar */}
       <div className="flex items-center justify-between">
         <Link
           href="/movies"
@@ -107,6 +168,7 @@ export default function MovieDetailPage() {
         </button>
       </div>
 
+      {/* Hero Banner */}
       <div className="relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[240px] flex items-end p-6">
         {backdropUrl && (
           <div className="absolute inset-0 z-0">
@@ -161,7 +223,9 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
+      {/* Grid Principal */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* aperçu vidéo */}
         {isPlaying && (
           <div className="lg:col-span-5 space-y-3 bg-[#12141c] border border-white/10 rounded-2xl p-4 sticky top-6 shadow-2xl">
             <div className="flex items-center justify-between">
@@ -191,7 +255,9 @@ export default function MovieDetailPage() {
           </div>
         )}
 
+        {/* Synopsis & Carrousel d'Acteurs */}
         <div className={isPlaying ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
+          
           <div className="bg-[#12141c] border border-white/5 rounded-2xl p-6 space-y-4">
             <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
               <Film className="w-4 h-4 text-indigo-400" /> Synopsis & Histoire
@@ -207,14 +273,17 @@ export default function MovieDetailPage() {
             )}
           </div>
 
+          {/* Slider Carrousel d'Acteurs 3D */}
           {castList.length > 0 && (
             <div className="bg-[#12141c] border border-white/5 rounded-2xl p-6 space-y-4">
               <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                 <User className="w-4 h-4 text-indigo-400" /> Casting / Acteurs
               </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              
+              {/* Conteneur défilant horizontalement */}
+              <div className="flex gap-4 overflow-x-auto pb-4 pt-2 scrollbar-thin scrollbar-thumb-indigo-600 scrollbar-track-transparent">
                 {castList.map((actor: string, idx: number) => (
-                  <ActorCard key={idx} name={actor} />
+                  <FlipActorCard key={idx} name={actor} />
                 ))}
               </div>
             </div>
