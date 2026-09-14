@@ -51,7 +51,7 @@ export default function SeriesDetailPage() {
         <ArrowLeft className="w-4 h-4" /> Retour aux séries
       </Link>
 
-      {/* Hero Header */}
+      {/* Header Série */}
       <div className="relative rounded-xl overflow-hidden bg-card border border-border p-6 flex flex-col md:flex-row gap-6">
         {info.cover && (
           <img
@@ -74,16 +74,17 @@ export default function SeriesDetailPage() {
         </div>
       </div>
 
-      {/* Layout principal : Lecteur latéral à gauche + Liste d'épisodes à droite */}
+      {/* Grid Principal */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        {/* Lecteur vidéo latéral (Aperçu) */}
+        {/* Colonne Lecteur vidéo (Aperçu) */}
         {activeEpisode && (
           <div className="lg:col-span-5 space-y-3 bg-card border border-border rounded-xl p-4 sticky top-6">
             <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Aperçu Épisode {activeEpisode.episode_num}
             </h2>
-            <div className="aspect-video w-full rounded-lg overflow-hidden bg-black">
+            {/* Conteneur corrigé avec flex + justify-center pour centrer la vidéo */}
+            <div className="relative aspect-video w-full rounded-lg overflow-hidden bg-black flex items-center justify-center">
               <VideoPlayer
                 key={activeEpisode.id}
                 sources={[`/api/stream?type=series&id=${activeEpisode.id}&ext=${activeEpisode.container_extension || "mp4"}`]}
@@ -98,8 +99,8 @@ export default function SeriesDetailPage() {
           </div>
         )}
 
-        {/* Liste des Saisons et Épisodes */}
-        <div className={activeEpisode ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
+        {/* Colonne Épisodes & Saisons */}
+        <div className={activeEpisode ? "lg:col-span-7 space-y-4 self-start" : "lg:col-span-12 space-y-4"}>
           {/* Onglets Saisons */}
           <div className="flex gap-2 overflow-x-auto pb-2">
             {Object.keys(episodesBySeason).map((seasonNum) => (
