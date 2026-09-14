@@ -23,22 +23,18 @@ interface PosterCardProps {
   href: string;
   className?: string;
   index?: number;
+  onPlay?: (item: PosterItem) => void;
 }
 
-export const PosterCard: React.FC<PosterCardProps> = ({ item, href }) => {
+export const PosterCard: React.FC<PosterCardProps> = ({ item, href, onPlay }) => {
   const [imageError, setImageError] = useState(false);
-
   const title = item.name || item.title || "Titre inconnu";
   
-  // Extraction dynamique de l'URL de l'image (couverture série, VOD ou poster)
   let imageUrl = item.cover || item.stream_icon || item.poster || "";
-
-  // Proxy pour contourner le blocage Mixed Content (HTTP sur HTTPS)
   if (imageUrl && imageUrl.startsWith("http://")) {
     imageUrl = `/api/hls?u=${encodeURIComponent(imageUrl)}`;
   }
 
-  // Fallback initiales si l'image est absente ou en erreur
   const initials = title
     .split(" ")
     .slice(0, 2)
@@ -46,10 +42,18 @@ export const PosterCard: React.FC<PosterCardProps> = ({ item, href }) => {
     .join("")
     .toUpperCase();
 
+  const handleClick = (e: React.MouseEvent) => {
+    if (onPlay) {
+      e.preventDefault();
+      onPlay(item);
+    }
+  };
+
   return (
     <Link
       href={href}
-      className="group relative flex flex-col overflow-hidden rounded-lg bg-card transition-all duration-200 hover:scale-105 hover:z-10 focus:outline-none focus:ring-2 focus:ring-primary"
+      onClick={handleClick}
+      className="group relative flex flex-col overflow-hidden rounded-lg bg-card transition-all duration-200 hover:scale-105 hover:z-10 focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
     >
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         {imageUrl && !imageError ? (
