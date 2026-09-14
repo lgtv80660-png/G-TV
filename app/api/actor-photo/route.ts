@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+const TMDB_API_KEY = process.env.TMDB_API_KEY || "7b311a6f43090b24f188272bcc0655b3";
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const rawName = searchParams.get("name");
@@ -8,59 +10,51 @@ export async function GET(request: Request) {
     return NextResponse.json({ photoUrl: null, bio: null });
   }
 
-  // Nettoyage du nom de l'acteur (retrait des espaces superflus et caractères spéciaux)
   const name = rawName.trim();
 
   try {
-    // 1. Recherche prioritaire sur l'API publique TMDB (très complète pour le cinéma)
-    const tmdbRes = await fetch(
-      `https://api.themoviedb.org/3/search/person?api_key=15d260044e2614e361e09315def00661&query=${encodeURIComponent(
+    // 1. Recherche de l'acteur sur TMDB avec ta clé d'API
+    const searchRes = await fetch(
+      `https://api.themoviedb.org/3/search/person?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(
         name
-      )}`,
-      { next: { revalidate: 86400 } }
+      )}&language=fr-FR`,
+      { next: { revalidate: 86400 } } // Cache 24h
     );
-    const tmdbData = await tmdbRes.json();
-    const person = tmdbData?.results?.[0];
+    const searchData = await searchRes.json();
+    const person = searchData?.results?.[0];
 
-    if (person?.profile_path) {
-      return NextResponse.json({
-        photoUrl: `https://image.tmdb.org/t/p/w300${person.profile_path}`,
-        bio: person.known_for_department
-          ? `Connu pour : ${person.known_for_department}`
-          : "Acteur de cinéma.",
-      });
-    }
+    if (person) {
+      const photoUrl = person.profile_path
+        ? `https://image.tmdb.org/t/p/w300${person.profile_path}`
+        : null;
 
-    // 2. Recherche secondaire sur Wikipédia si absent de TMDB
-    const wikiRes = await fetch(
-      `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(
-        name
-      )}&prop=pageimages|extracts&pithumbsize=400&exintro=1&explaintext=1&exchars=150&format=json&origin=*`,
-      { next: { revalidate: 86400 } }
-    );
-    const wikiData = await wikiRes.json();
-    const pages = wikiData?.query?.pages;
+      // 2. Récupération des détails complets (biographie en français)
+      let bio = person.known_for_department
+        ? `Acteur principal / ${person.known_for_department}`
+        : "Acteur de cinéma.";
 
-    if (pages) {
-      const pageId = Object.keys(pages)[0];
-      const page = pages[pageId];
-      if (pageId !== "-1") {
-        const thumbnail = page?.thumbnail?.source || null;
-        const bio = page?.extract || "Aucune biographie disponible.";
-
-        if (thumbnail) {
-          return NextResponse.json({
-            photoUrl: thumbnail,
-            bio: bio,
-          });
+      try {
+        const detailsRes = await fetch(
+          `https://api.themoviedb.org/3/person/${person.id}?api_key=${TMDB_API_KEY}&language=fr-FR`,
+          { next: { revalidate: 86400 } }
+        );
+        const detailsData = await detailsRes.json();
+        if (detailsData?.biography && detailsData.biography.trim().length > 0) {
+          bio = detailsData.biography;
         }
+      } catch (e) {
+        // En cas d'absence de bio détaillée, on conserve la fallback
+      }
+
+      if (photoUrl) {
+        return NextResponse.json({ photoUrl, bio });
       }
     }
   } catch (err) {
-    console.error("Fetch actor error:", err);
+    console.error("Erreur d'extraction TMDB:", err);
   }
 
-  // 3. Fallback stylisé garanti si l'acteur n'a aucune photo officielle en ligne
+  // 3. Fallback avec avatar stylisé si l'acteur n'a pas de profil sur TMDB
   const initials = name
     .split(" ")
     .map((n) => n[0])
