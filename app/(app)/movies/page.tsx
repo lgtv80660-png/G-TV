@@ -2,29 +2,24 @@
 
 import { TopBar } from "@/components/layout/TopBar";
 import { CatalogBrowser } from "@/components/catalog/CatalogBrowser";
-import { useVodCategories, useVodStreams } from "@/lib/hooks";
-import type { VodStream } from "@/lib/xtream/types";
-import { yearFrom } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { Category } from "@/lib/xtream/types";
 
 export default function MoviesPage() {
-  const { data: cats = [] } = useVodCategories();
+  const [cats, setCats] = useState<Category[]>([]);
+
+  useEffect(() => {
+    api.vodCategories().then(setCats).catch(console.error);
+  }, []);
 
   return (
     <>
       <TopBar title="Movies" />
-      <CatalogBrowser<VodStream>
+      <CatalogBrowser
         sectionKey="movies"
         categories={cats}
-        useItems={useVodStreams}
-        toPoster={(m) => ({
-          id: m.stream_id,
-          name: m.name,
-          poster: m.stream_icon,
-          rating: m.rating,
-          year: yearFrom(m.name),
-        })}
-        hrefFor={(m) => `/movies/${m.stream_id}`}
-        emptyLabel="No movies in this category."
+        fetchItems={(catId) => api.vodStreams(catId)}
       />
     </>
   );
