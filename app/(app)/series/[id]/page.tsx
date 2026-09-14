@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams } from "react";
 import { api } from "@/lib/api";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { Play, ArrowLeft } from "lucide-react";
@@ -20,7 +20,6 @@ export default function SeriesDetailPage() {
       .seriesInfo(id as string)
       .then((data) => {
         setSeriesInfo(data);
-        // Sélectionne la première saison disponible par défaut
         if (data?.episodes) {
           const seasons = Object.keys(data.episodes);
           if (seasons.length > 0) setActiveSeason(seasons[0]);
@@ -75,10 +74,10 @@ export default function SeriesDetailPage() {
         </div>
       </div>
 
-      {/* Layout principal : Lecteur latéral à gauche (si un épisode est actif) + Liste d'épisodes à droite */}
+      {/* Layout principal : Lecteur latéral à gauche + Liste d'épisodes à droite */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        {/* Colonne Lecteur vidéo latéral (Aperçu) */}
+        {/* Lecteur vidéo latéral (Aperçu) */}
         {activeEpisode && (
           <div className="lg:col-span-5 space-y-3 bg-card border border-border rounded-xl p-4 sticky top-6">
             <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -86,7 +85,10 @@ export default function SeriesDetailPage() {
             </h2>
             <div className="aspect-video w-full rounded-lg overflow-hidden bg-black">
               <VideoPlayer
-                src={`/api/stream?type=series&id=${activeEpisode.id}&ext=${activeEpisode.container_extension || "mp4"}`}
+                key={activeEpisode.id}
+                sources={[`/api/stream?type=series&id=${activeEpisode.id}&ext=${activeEpisode.container_extension || "mp4"}`]}
+                ext={activeEpisode.container_extension || "mp4"}
+                isLive={false}
                 title={`${info.name} - S${activeEpisode.season}E${activeEpisode.episode_num} - ${activeEpisode.title}`}
               />
             </div>
@@ -96,7 +98,7 @@ export default function SeriesDetailPage() {
           </div>
         )}
 
-        {/* Colonne Liste des Saisons et Épisodes */}
+        {/* Liste des Saisons et Épisodes */}
         <div className={activeEpisode ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
           {/* Onglets Saisons */}
           <div className="flex gap-2 overflow-x-auto pb-2">
