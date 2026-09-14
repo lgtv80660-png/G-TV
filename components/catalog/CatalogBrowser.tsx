@@ -62,10 +62,8 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
 
   const getHref = (item: any) => {
     const id = item.series_id || item.stream_id || item.id;
-    const ext = item.container_extension || "mp4";
-    
     if (type === "series") return `/series/${id}`;
-    if (type === "movies") return `/watch?type=movie&id=${id}&ext=${ext}`;
+    if (type === "movies") return `/movies/${id}`;
     return `/watch?type=live&id=${id}&ext=ts`;
   };
 
