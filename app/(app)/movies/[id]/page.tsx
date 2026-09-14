@@ -42,6 +42,7 @@ export default function MovieDetailPage() {
 
   const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
   const isFavorite = isFav("movie", Number(streamId));
+  const movieTitle = info.name || info.title || "Film";
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-6 space-y-6">
@@ -57,7 +58,7 @@ export default function MovieDetailPage() {
           onClick={() =>
             toggleFav("movie", {
               id: Number(streamId),
-              name: info.name || info.title,
+              name: movieTitle,
               poster: info.movie_image || info.cover_big,
               ext: containerExt,
             })
@@ -70,8 +71,8 @@ export default function MovieDetailPage() {
         </button>
       </div>
 
-      {/* Banner / Hero section du film */}
-      <div className="relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[320px] flex items-end p-6">
+      {/* Header Banner du film */}
+      <div className="relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[240px] flex items-end p-6">
         {backdropUrl && (
           <div className="absolute inset-0 z-0">
             <img
@@ -88,14 +89,14 @@ export default function MovieDetailPage() {
           {(info.movie_image || info.cover_big) && (
             <img
               src={info.movie_image || info.cover_big}
-              alt={info.name}
-              className="w-40 aspect-[2/3] object-cover rounded-xl shadow-2xl border border-white/10 flex-shrink-0"
+              alt={movieTitle}
+              className="w-36 aspect-[2/3] object-cover rounded-xl shadow-2xl border border-white/10 flex-shrink-0"
             />
           )}
 
           <div className="space-y-3 flex-1">
             <h1 className="text-3xl font-extrabold tracking-tight text-white">
-              {info.name || info.title} {info.releasedate || info.year ? `(${info.releasedate?.slice(0, 4) || info.year})` : ""}
+              {movieTitle} {info.releasedate || info.year ? `(${info.releasedate?.slice(0, 4) || info.year})` : ""}
             </h1>
 
             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 font-medium">
@@ -112,7 +113,6 @@ export default function MovieDetailPage() {
               {info.genre && <span className="text-zinc-400">• {info.genre}</span>}
             </div>
 
-            {/* Bouton Play qui déclenche la lecture Aperçu sur place */}
             {!isPlaying && (
               <button
                 onClick={() => setIsPlaying(true)}
@@ -122,51 +122,78 @@ export default function MovieDetailPage() {
                 Play
               </button>
             )}
-
-            {info.description || info.plot ? (
-              <p className="text-xs text-zinc-300/90 max-w-4xl leading-relaxed line-clamp-3">
-                {info.description || info.plot}
-              </p>
-            ) : null}
-
-            <div className="text-[11px] text-zinc-400 space-y-1">
-              {info.cast && <p><span className="text-zinc-500">Cast:</span> {info.cast}</p>}
-              {info.director && <p><span className="text-zinc-500">Director:</span> {info.director}</p>}
-              {info.releasedate && <p><span className="text-zinc-500">Released:</span> {info.releasedate}</p>}
-            </div>
           </div>
         </div>
       </div>
 
-      {/* Cadre du Lecteur Vidéo Aperçu Embarqué */}
-      {isPlaying && (
-        <div className="space-y-3 bg-[#12141c] border border-white/10 rounded-2xl p-4 shadow-2xl animate-in fade-in duration-300">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-400">
-              Aperçu - {info.name || info.title}
-            </h2>
-            <button
-              onClick={() => setIsPlaying(false)}
-              className="text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition-colors"
-              title="Fermer le lecteur"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+      {/* Grid 2 colonnes comme pour les séries : Petit lecteur à gauche (col-span-5) + Détails à droite (col-span-7) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Lecteur Aperçu à Gauche */}
+        {isPlaying && (
+          <div className="lg:col-span-5 space-y-3 bg-[#12141c] border border-white/10 rounded-2xl p-4 sticky top-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-400">
+                Aperçu - {movieTitle}
+              </h2>
+              <button
+                onClick={() => setIsPlaying(false)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
+                title="Fermer l'aperçu"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-          <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5">
-            <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
-              <VideoPlayer
-                key={streamId}
-                sources={[`/api/stream?type=movie&id=${streamId}&ext=${containerExt}`]}
-                ext={containerExt}
-                isLive={false}
-                title={info.name || info.title || "Film"}
-              />
+            <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5">
+              <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
+                <VideoPlayer
+                  key={streamId}
+                  sources={[`/api/stream?type=movie&id=${streamId}&ext=${containerExt}`]}
+                  ext={containerExt}
+                  isLive={false}
+                  title={movieTitle}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Fiche d'information du film à Droite */}
+        <div className={isPlaying ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
+          <div className="bg-[#12141c] border border-white/5 rounded-2xl p-6 space-y-4">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+              Synopsis & Détails
+            </h3>
+            
+            {info.description || info.plot ? (
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                {info.description || info.plot}
+              </p>
+            ) : null}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-zinc-400 pt-2 border-t border-white/5">
+              {info.cast && (
+                <div>
+                  <span className="text-zinc-500 block font-semibold mb-0.5">Cast:</span>
+                  <span>{info.cast}</span>
+                </div>
+              )}
+              {info.director && (
+                <div>
+                  <span className="text-zinc-500 block font-semibold mb-0.5">Director:</span>
+                  <span>{info.director}</span>
+                </div>
+              )}
+              {info.releasedate && (
+                <div>
+                  <span className="text-zinc-500 block font-semibold mb-0.5">Released:</span>
+                  <span>{info.releasedate}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
