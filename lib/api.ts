@@ -1,126 +1,83 @@
-// Client-side fetchers — all same-origin, hitting our proxy routes.
-import type {
-  AuthResponse,
-  Category,
-  LiveStream,
-  VodStream,
-  VodInfo,
-  Series,
-  SeriesInfo,
-  EpgListing,
-  StreamKind,
-} from "./xtream/types";
+The Netlify deploy errored, with the following guidance provided:
 
-async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { credentials: "same-origin" });
-  if (!res.ok) {
-    let msg = `Request failed (${res.status})`;
-    try {
-      const j = await res.json();
-      if (j?.error) msg = j.error;
-    } catch {}
-    const err = new Error(msg) as Error & { status: number };
-    err.status = res.status;
-    throw err;
-  }
-  return res.json() as Promise<T>;
+The build fails at [line 77-86](#L77-L86) because `fetchSeries` is imported from `@/lib/api` in [`app/(app)/series/page.tsx`](https://github.com/lgtv80660-png/G-TV/tree/main/app/(app)/series/page.tsx), but that export does not exist in [`lib/api.ts`](https://github.com/lgtv80660-png/G-TV/tree/main/lib/api.ts).
+
+**Solution**
+
+Open `lib/api.ts` and add the missing `fetchSeries` export. Based on the pattern of the existing file, it likely should look something like:
+
+```typescript
+export async function fetchSeries() {
+  // fetch and return series data
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/series`);
+  if (!res.ok) throw new Error("Failed to fetch series");
+  return res.json();
 }
+```
 
-const x = (action: string, params: Record<string, string | number | undefined> = {}) => {
-  const sp = new URLSearchParams({ action });
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null && v !== "") sp.set(k, String(v));
-  }
-  return `/api/xtream?${sp.toString()}`;
-};
+Alternatively, if `fetchSeries` was renamed or already exists under a different name in `lib/api.ts`, update the import in `app/(app)/series/page.tsx` to match the correct export name:
 
-export const api = {
-  // auth
-  session: () =>
-    getJson<{
-      authenticated: boolean;
-      baseUrl?: string;
-      username?: string;
-      user_info?: AuthResponse["user_info"];
-      server_info?: AuthResponse["server_info"];
-    }>("/api/auth"),
+```typescript
+import { yourActualFunctionName, fetchSeriesCategories } from "@/lib/api";
+```
 
-  login: async (baseUrl: string, username: string, password: string) => {
-    const res = await fetch("/api/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ baseUrl, username, password }),
-      credentials: "same-origin",
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || "Login failed");
-    return data as { ok: true; user_info: AuthResponse["user_info"]; server_info: AuthResponse["server_info"] };
-  },
+After making the fix, commit and push the change to trigger a new build.
 
-  logout: () => fetch("/api/auth", { method: "DELETE", credentials: "same-origin" }),
+The relevant error logs are:
 
-  // catalog
-  liveCategories: () => getJson<Category[]>(x("get_live_categories")),
-  liveStreams: (categoryId?: string) => getJson<LiveStream[]>(x("get_live_streams", { category_id: categoryId })),
-  vodCategories: () => getJson<Category[]>(x("get_vod_categories")),
-  vodStreams: (categoryId?: string) => getJson<VodStream[]>(x("get_vod_streams", { category_id: categoryId })),
-  vodInfo: (id: string | number) => getJson<VodInfo>(x("get_vod_info", { vod_id: id })),
-  seriesCategories: () => getJson<Category[]>(x("get_series_categories")),
-  series: (categoryId?: string) => getJson<Series[]>(x("get_series", { category_id: categoryId })),
-  seriesInfo: (id: string | number) => getJson<SeriesInfo>(x("get_series_info", { series_id: id })),
-
-  // epg (decoded)
-  epg: (streamId: string | number, limit = 8) =>
-    getJson<{ epg_listings: EpgListing[] }>(`/api/epg?stream_id=${streamId}&limit=${limit}`),
-
-  // free TV (public iptv-org lists)
-  freeTvCategories: () =>
-    getJson<{ categories: Array<{ id: string; name: string }> }>("/api/freetv?list=categories"),
-  freeTvCountries: () =>
-    getJson<{ countries: Array<{ id: string; name: string }> }>("/api/freetv?list=countries"),
-  freeTvChannels: (mode: "cat" | "country", value: string) =>
-    getJson<{ channels: FreeChannel[] }>(
-      `/api/freetv?${mode === "country" ? "country" : "category"}=${encodeURIComponent(value)}`,
-    ),
-};
-
-export interface FreeChannel {
-  id: string;
-  name: string;
-  logo: string;
-  group: string;
-  url: string;
-}
-
-/** Same-origin HLS player URL for a public free-TV stream. */
-export function freeTvSrc(m3u8Url: string): string {
-  return `/api/hls?u=${encodeURIComponent(m3u8Url)}`;
-}
-
-/** Same-origin proxied media URL (used for live, and as a VOD fallback). */
-export function streamSrc(kind: StreamKind, id: string | number, ext = "ts"): string {
-  return `/api/stream?type=${kind}&id=${id}&ext=${encodeURIComponent(ext)}`;
-}
-
-/** ffmpeg remux URL — fallback for browser-unplayable containers (mkv/avi/…). */
-export function transcodeSrc(kind: StreamKind, id: string | number, ext: string): string {
-  return `/api/transcode?type=${kind}&id=${id}&ext=${encodeURIComponent(ext)}`;
-}
-
-/** Resolve the direct provider URL + whether direct browser playback is viable. */
-export async function resolveSrc(
-  kind: StreamKind,
-  id: string | number,
-  ext: string,
-): Promise<{ url: string | null; directOk: boolean }> {
-  try {
-    const res = await fetch(`/api/resolve?type=${kind}&id=${id}&ext=${encodeURIComponent(ext)}`, {
-      credentials: "same-origin",
-    });
-    if (!res.ok) return { url: null, directOk: false };
-    const { url, directOk } = await res.json();
-    return { url: url ?? null, directOk: !!directOk };
-  } catch {
-    return { url: null, directOk: false };
-  }
-}
+Line 65: - very dynamic requires (like require('./' + foo)).
+Line 66: To resolve this, you can
+Line 67: - remove them if possible, or
+Line 68: - only use them in development, or
+Line 69: - make sure they are statically scoped to some subfolder: path.join(process.cwd(), 'data', bar), or
+Line 70: - add ignore comments: path.join(/*turbopackIgnore: true*/ process.cwd(), bar)
+Line 71: Import trace:
+Line 72:   App Route:
+Line 73:     ./next.config.ts
+Line 74:     ./app/api/transcode/route.ts
+Line 75: > Build error occurred
+Line 76: Error: Turbopack build failed with 4 errors:
+Line 77: ./app/(app)/series/page.tsx:5:1
+Line 78: Export fetchSeries doesn't exist in target module
+Line 79:   3 | import { useEffect, useState } from "react";
+Line 80:   4 | import { CatalogBrowser } from "@/components/catalog/CatalogBrowser";
+Line 81: > 5 | import { fetchSeries, fetchSeriesCategories } from "@/lib/api";
+Line 82:     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Line 83:   6 |
+Line 84:   7 | export default function SeriesPage() {
+Line 85:   8 |   const [series, setSeries] = useState<any[]>([]);
+Line 86: The export fetchSeries was not found in module [project]/lib/api.ts [app-client] (ecmascript).
+Line 160:     ./app/(app)/series/page.tsx [Client Component Browser]
+Line 161:     ./app/(app)/series/page.tsx [Server Component]
+Line 162:   Client Component SSR:
+Line 163:     ./app/(app)/series/page.tsx [Client Component SSR]
+Line 164:     ./app/(app)/series/page.tsx [Server Component]
+Line 165:     at <unknown> (./app/(app)/series/page.tsx:5:1)
+Line 166:     at <unknown> (./app/(app)/series/page.tsx:5:1)
+Line 167:     at <unknown> (./app/(app)/series/page.tsx:5:1)
+Line 168:     at <unknown> (./app/(app)/series/page.tsx:5:1)
+Line 169: ​
+Line 170: "build.command" failed                                        
+Line 171: ────────────────────────────────────────────────────────────────
+Line 172: ​
+Line 173:   Error message
+Line 174:   Command failed with exit code 1: npm run build
+Line 175: ​
+Line 176:   Error location
+Line 177:   In Build command from Netlify app:
+Line 178:   npm run build
+Line 179: ​
+Line 180:   Resolved config
+Line 181:   build:
+Line 182:     command: npm run build
+Line 183:     commandOrigin: ui
+Line 184:     publish: /opt/build/repo/.next
+Line 185:     publishOrigin: ui
+Line 186:   plugins:
+Line 187:     - inputs: {}
+Line 188:       origin: ui
+Line 189:       package: "@netlify/plugin-nextjs"
+Line 190: Build failed due to a user error: Build script returned non-zero exit code: 2
+Line 191: Failing build: Failed to build site
+Line 192: Finished processing build request in 25.041s
+Line 193: Failed during stage 'building site': Build script returned non-zero exit code: 2
