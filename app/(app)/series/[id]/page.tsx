@@ -1,231 +1,157 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import React, { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
+import { api } from "@/lib/api";
+import { VideoPlayer } from "@/components/player/VideoPlayer";
+import { Play, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { TopBar } from "@/components/layout/TopBar";
-import { api, streamSrc } from "@/lib/api";
-import { SeriesInfo, Episode } from "@/lib/xtream/types";
-import { Play, Star, Calendar, Tv } from "lucide-react";
 
-interface PageProps {
-  params: Promise<{ id: string }>;
-}
-
-export default function SeriesDetailPage({ params }: PageProps) {
-  const { id } = use(params);
-
-  const [info, setInfo] = useState<SeriesInfo | null>(null);
-  const [selectedSeason, setSelectedSeason] = useState<number>(1);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+export default function SeriesDetailPage() {
+  const { id } = useParams();
+  const [seriesInfo, setSeriesInfo] = useState<any>(null);
+  const [activeSeason, setActiveSeason] = useState<string>("1");
+  const [activeEpisode, setActiveEpisode] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadSeriesInfo() {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await api.seriesInfo(id);
-
-        if (isMounted) {
-          setInfo(data);
-          // Sélectionne la première saison disponible par défaut
-          if (data?.episodes && Object.keys(data.episodes).length > 0) {
-            const seasonNumbers = Object.keys(data.episodes)
-              .map(Number)
-              .sort((a, b) => a - b);
-            setSelectedSeason(seasonNumbers[0] || 1);
-          }
+    if (!id) return;
+    api
+      .seriesInfo(id as string)
+      .then((data) => {
+        setSeriesInfo(data);
+        // Sélectionne la première saison disponible par défaut
+        if (data?.episodes) {
+          const seasons = Object.keys(data.episodes);
+          if (seasons.length > 0) setActiveSeason(seasons[0]);
         }
-      } catch (err) {
-        console.error("Erreur lors de la récupération de la série :", err);
-        if (isMounted) {
-          setError("Impossible de charger les détails de cette série.");
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadSeriesInfo();
-
-    return () => {
-      isMounted = false;
-    };
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, [id]);
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-t-2 border-primary"></div>
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
       </div>
     );
   }
 
-  if (error || !info) {
-    return (
-      <div className="container mx-auto px-4 py-12 text-center">
-        <h2 className="text-xl font-semibold text-destructive">{error || "Série introuvable"}</h2>
-        <Link
-          href="/series"
-          className="mt-4 inline-block rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-        >
-          Retour aux séries
-        </Link>
-      </div>
-    );
-  }
-
-  const seriesData = info.info || {};
-  const episodesBySeason = info.episodes || {};
-  const seasonsList = Object.keys(episodesBySeason)
-    .map(Number)
-    .sort((a, b) => a - b);
-
-  const currentEpisodes: Episode[] = episodesBySeason[selectedSeason] || [];
+  const info = seriesInfo?.info || {};
+  const episodesBySeason = seriesInfo?.episodes || {};
+  const currentEpisodes = episodesBySeason[activeSeason] || [];
 
   return (
-    <div className="min-h-screen pb-12">
-      <TopBar title={seriesData.name || "Détails de la série"} />
+    <div className="min-h-screen bg-background text-foreground p-6 space-y-6">
+      {/* Bouton Retour */}
+      <Link
+        href="/series"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowLeft className="w-4 h-4" /> Retour aux séries
+      </Link>
 
-      <main className="container mx-auto px-4 pt-6 space-y-8">
-        {/* Banner / Hero Section */}
-        <div className="relative overflow-hidden rounded-2xl bg-card p-6 md:p-8 shadow-lg border border-border">
-          <div className="flex flex-col md:flex-row gap-6 items-start">
-            {/* Poster */}
-            {seriesData.cover ? (
-              <div className="relative aspect-[2/3] w-full md:w-56 shrink-0 overflow-hidden rounded-xl bg-muted shadow-md">
-                <img
-                  src={
-                    seriesData.cover.startsWith("http://")
-                      ? `/api/hls?u=${encodeURIComponent(seriesData.cover)}`
-                      : seriesData.cover
-                  }
-                  alt={seriesData.name || "Cover"}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="flex aspect-[2/3] w-full md:w-56 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                <Tv className="h-16 w-16" />
-              </div>
-            )}
-
-            {/* Infos */}
-            <div className="space-y-4 flex-1">
-              <h1 className="text-2xl md:text-4xl font-bold tracking-tight text-foreground">
-                {seriesData.name}
-              </h1>
-
-              <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                {seriesData.releaseDate && (
-                  <div className="flex items-center gap-1">
-                    <Calendar className="h-4 w-4" />
-                    <span>{seriesData.releaseDate}</span>
-                  </div>
-                )}
-                {seriesData.rating && (
-                  <div className="flex items-center gap-1 text-yellow-500 font-medium">
-                    <Star className="h-4 w-4 fill-current" />
-                    <span>{seriesData.rating}</span>
-                  </div>
-                )}
-                {seriesData.genre && (
-                  <span className="rounded-md bg-muted px-2.5 py-1 text-xs font-medium">
-                    {seriesData.genre}
-                  </span>
-                )}
-              </div>
-
-              {seriesData.plot && (
-                <p className="text-sm md:text-base text-muted-foreground leading-relaxed line-clamp-4">
-                  {seriesData.plot}
-                </p>
-              )}
-            </div>
+      {/* Hero Header */}
+      <div className="relative rounded-xl overflow-hidden bg-card border border-border p-6 flex flex-col md:flex-row gap-6">
+        {info.cover && (
+          <img
+            src={info.cover}
+            alt={info.name}
+            className="w-48 aspect-[2/3] object-cover rounded-lg shadow-lg"
+          />
+        )}
+        <div className="space-y-3 flex-1">
+          <h1 className="text-3xl font-bold">{info.name} ({info.releaseDate?.slice(0, 4) || info.year})</h1>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span className="bg-primary/20 text-primary px-2 py-0.5 rounded text-xs font-semibold">
+              {info.rating || "N/A"}
+            </span>
+            <span>{info.genre}</span>
           </div>
+          <p className="text-sm text-muted-foreground max-w-3xl leading-relaxed">
+            {info.plot}
+          </p>
         </div>
+      </div>
 
-        {/* Sélecteur de Saisons avec défilement fluide / Swipe tactile */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold text-foreground">Saisons</h2>
-          
-          <div className="w-full overflow-x-auto overflow-y-hidden py-2 touch-pan-x scrollbar-none snap-x active:cursor-grabbing cursor-grab">
-            <div className="flex gap-3 w-max px-1">
-              {seasonsList.map((seasonNum) => {
-                const isSelected = selectedSeason === seasonNum;
-                return (
-                  <button
-                    key={seasonNum}
-                    onClick={() => setSelectedSeason(seasonNum)}
-                    className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shrink-0 snap-start select-none ${
-                      isSelected
-                        ? "bg-primary text-primary-foreground shadow-lg scale-105"
-                        : "bg-card hover:bg-muted text-muted-foreground hover:text-foreground border border-border"
-                    }`}
-                  >
-                    Saison {seasonNum}
-                  </button>
-                );
-              })}
+      {/* Layout principal : Lecteur latéral à gauche (si un épisode est actif) + Liste d'épisodes à droite */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        {/* Colonne Lecteur vidéo latéral (Aperçu) */}
+        {activeEpisode && (
+          <div className="lg:col-span-5 space-y-3 bg-card border border-border rounded-xl p-4 sticky top-6">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Aperçu Épisode {activeEpisode.episode_num}
+            </h2>
+            <div className="aspect-video w-full rounded-lg overflow-hidden bg-black">
+              <VideoPlayer
+                src={`/api/stream?type=series&id=${activeEpisode.id}&ext=${activeEpisode.container_extension || "mp4"}`}
+                title={`${info.name} - S${activeEpisode.season}E${activeEpisode.episode_num} - ${activeEpisode.title}`}
+              />
             </div>
-          </div>
-        </div>
-
-        {/* Liste des Épisodes */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-foreground">
-            Épisodes - Saison {selectedSeason} ({currentEpisodes.length})
-          </h3>
-
-          {currentEpisodes.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">
-              Aucun épisode disponible pour cette saison.
+            <p className="text-sm font-medium">
+              S{activeEpisode.season}E{activeEpisode.episode_num} - {activeEpisode.title}
             </p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {currentEpisodes.map((ep) => {
-                const episodeTitle = ep.title || `Épisode ${ep.episode_num}`;
-                const containerExt = ep.container_extension || "mp4";
-                const watchUrl = `/watch?type=series&id=${ep.id}&ext=${containerExt}&title=${encodeURIComponent(
-                  `${seriesData.name || "Série"} - S${selectedSeason}E${ep.episode_num}`
-                )}`;
+          </div>
+        )}
 
-                return (
-                  <Link
-                    key={ep.id}
-                    href={watchUrl}
-                    className="group flex flex-col justify-between overflow-hidden rounded-xl border border-border bg-card p-4 transition-all duration-200 hover:border-primary hover:shadow-md"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <span className="text-xs font-semibold text-primary">
-                          Épisode {ep.episode_num}
-                        </span>
-                        <h4 className="text-sm font-bold text-foreground group-hover:text-primary line-clamp-1">
-                          {episodeTitle}
-                        </h4>
-                      </div>
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform group-hover:scale-110 group-hover:bg-primary group-hover:text-primary-foreground">
-                        <Play className="h-4 w-4 fill-current ml-0.5" />
-                      </div>
-                    </div>
+        {/* Colonne Liste des Saisons et Épisodes */}
+        <div className={activeEpisode ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
+          {/* Onglets Saisons */}
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {Object.keys(episodesBySeason).map((seasonNum) => (
+              <button
+                key={seasonNum}
+                onClick={() => setActiveSeason(seasonNum)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeSeason === seasonNum
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+              >
+                Saison {seasonNum}
+              </button>
+            ))}
+          </div>
 
-                    {ep.info?.plot && (
-                      <p className="mt-3 text-xs text-muted-foreground line-clamp-2">
-                        {ep.info.plot}
+          {/* Liste des épisodes */}
+          <div className="space-y-2">
+            {currentEpisodes.map((ep: any) => {
+              const isSelected = activeEpisode?.id === ep.id;
+              return (
+                <div
+                  key={ep.id}
+                  className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
+                    isSelected
+                      ? "border-primary bg-primary/10"
+                      : "border-border bg-card hover:bg-muted/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm font-bold text-muted-foreground w-6">
+                      {ep.episode_num}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold">
+                        S{ep.season}E{ep.episode_num} - {ep.title}
                       </p>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          )}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setActiveEpisode(ep)}
+                    className="p-2 rounded-full bg-primary text-primary-foreground hover:scale-110 transition-transform"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </main>
+
+      </div>
     </div>
   );
 }
