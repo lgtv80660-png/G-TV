@@ -1,205 +1,231 @@
 "use client";
 
-import { use, useState } from "react";
+import { useEffect, useState, use } from "react";
 import Link from "next/link";
-import { ArrowLeft, Play, Maximize, X } from "lucide-react";
-import { useSeriesInfo } from "@/lib/hooks";
-import { SmartImage } from "@/components/ui/SmartImage";
-import { Skeleton } from "@/components/ui/Skeleton";
-import { cleanName, cn } from "@/lib/utils";
-import type { Episode } from "@/lib/xtream/types";
+import { TopBar } from "@/components/layout/TopBar";
+import { api, streamSrc } from "@/lib/api";
+import { SeriesInfo, Episode } from "@/lib/xtream/types";
+import { Play, Star, Calendar, Tv } from "lucide-react";
 
-export default function SeriesDetailPage({ params }: { params: Promise<{ id: string }> }) {
+interface PageProps {
+  params: Promise<{ id: string }>;
+}
+
+export default function SeriesDetailPage({ params }: PageProps) {
   const { id } = use(params);
-  const { data, isLoading, isError, error } = useSeriesInfo(id);
 
-  const [selectedSeason, setSelectedSeason] = useState<string>("1");
-  const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
+  const [info, setInfo] = useState<SeriesInfo | null>(null);
+  const [selectedSeason, setSelectedSeason] = useState<number>(1);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (isLoading) {
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSeriesInfo() {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await api.seriesInfo(id);
+
+        if (isMounted) {
+          setInfo(data);
+          // Sélectionne la première saison disponible par défaut
+          if (data?.episodes && Object.keys(data.episodes).length > 0) {
+            const seasonNumbers = Object.keys(data.episodes)
+              .map(Number)
+              .sort((a, b) => a - b);
+            setSelectedSeason(seasonNumbers[0] || 1);
+          }
+        }
+      } catch (err) {
+        console.error("Erreur lors de la récupération de la série :", err);
+        if (isMounted) {
+          setError("Impossible de charger les détails de cette série.");
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadSeriesInfo();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
+
+  if (loading) {
     return (
-      <div className="p-8 space-y-6">
-        <Skeleton className="h-96 w-full rounded-3xl" />
-        <Skeleton className="h-12 w-1/3 rounded-xl" />
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-t-2 border-primary"></div>
       </div>
     );
   }
 
-  if (isError || !data) {
+  if (error || !info) {
     return (
-      <div className="p-16 text-center text-red-400">
-        <p>{(error as Error)?.message || "Impossible de charger la série."}</p>
+      <div className="container mx-auto px-4 py-12 text-center">
+        <h2 className="text-xl font-semibold text-destructive">{error || "Série introuvable"}</h2>
+        <Link
+          href="/series"
+          className="mt-4 inline-block rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+        >
+          Retour aux séries
+        </Link>
       </div>
     );
   }
 
-  const info = data.info;
-  const episodesBySeason = data.episodes ?? {};
-  const seasons = Object.keys(episodesBySeason);
-  const currentEpisodes = episodesBySeason[selectedSeason] ?? [];
+  const seriesData = info.info || {};
+  const episodesBySeason = info.episodes || {};
+  const seasonsList = Object.keys(episodesBySeason)
+    .map(Number)
+    .sort((a, b) => a - b);
 
-  // Récupération de l'image de fond (backdrop) ou de la couverture
-  const backdropUrl = info.backdrop_path?.[0] || info.cover;
-
-  const watchUrl = activeEpisode
-    ? `/watch?type=series&id=${activeEpisode.id}&ext=${activeEpisode.container_extension || "mp4"}&title=${encodeURIComponent(cleanName(activeEpisode.title))}`
-    : null;
+  const currentEpisodes: Episode[] = episodesBySeason[selectedSeason] || [];
 
   return (
-    <div className="min-h-screen bg-ink-950 text-white p-6 space-y-6">
-      
-      {/* Bouton Retour */}
-      <Link href="/series" className="inline-flex items-center gap-2 text-sm text-fog-400 hover:text-white transition-colors">
-        <ArrowLeft className="h-4 w-4" />
-        Retour aux séries
-      </Link>
+    <div className="min-h-screen pb-12">
+      <TopBar title={seriesData.name || "Détails de la série"} />
 
-      {/* BANNIÈRE HERO EN FOND D'ÉCRAN (HERO BACKDROP) */}
-      <div className="relative min-h-[380px] rounded-3xl overflow-hidden border border-white/10 flex flex-col justify-end p-8 shadow-2xl">
-        
-        {/* Image de fond avec dégradé sombre */}
-        {backdropUrl && (
-          <div className="absolute inset-0 z-0">
-            <SmartImage 
-              src={backdropUrl} 
-              alt={info.name || "Hero"} 
-              className="w-full h-full object-cover object-center" 
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/70 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-r from-ink-950/90 via-ink-950/40 to-transparent" />
+      <main className="container mx-auto px-4 pt-6 space-y-8">
+        {/* Banner / Hero Section */}
+        <div className="relative overflow-hidden rounded-2xl bg-card p-6 md:p-8 shadow-lg border border-border">
+          <div className="flex flex-col md:flex-row gap-6 items-start">
+            {/* Poster */}
+            {seriesData.cover ? (
+              <div className="relative aspect-[2/3] w-full md:w-56 shrink-0 overflow-hidden rounded-xl bg-muted shadow-md">
+                <img
+                  src={
+                    seriesData.cover.startsWith("http://")
+                      ? `/api/hls?u=${encodeURIComponent(seriesData.cover)}`
+                      : seriesData.cover
+                  }
+                  alt={seriesData.name || "Cover"}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="flex aspect-[2/3] w-full md:w-56 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                <Tv className="h-16 w-16" />
+              </div>
+            )}
+
+            {/* Infos */}
+            <div className="space-y-4 flex-1">
+              <h1 className="text-2xl md:text-4xl font-bold tracking-tight text-foreground">
+                {seriesData.name}
+              </h1>
+
+              <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                {seriesData.releaseDate && (
+                  <div className="flex items-center gap-1">
+                    <Calendar className="h-4 w-4" />
+                    <span>{seriesData.releaseDate}</span>
+                  </div>
+                )}
+                {seriesData.rating && (
+                  <div className="flex items-center gap-1 text-yellow-500 font-medium">
+                    <Star className="h-4 w-4 fill-current" />
+                    <span>{seriesData.rating}</span>
+                  </div>
+                )}
+                {seriesData.genre && (
+                  <span className="rounded-md bg-muted px-2.5 py-1 text-xs font-medium">
+                    {seriesData.genre}
+                  </span>
+                )}
+              </div>
+
+              {seriesData.plot && (
+                <p className="text-sm md:text-base text-muted-foreground leading-relaxed line-clamp-4">
+                  {seriesData.plot}
+                </p>
+              )}
+            </div>
           </div>
-        )}
+        </div>
 
-        {/* Contenu superposé */}
-        <div className="relative z-10 flex flex-col md:flex-row gap-8 items-end">
-          {Boolean(info.cover) && (
-            <div className="w-44 shrink-0 rounded-2xl overflow-hidden shadow-2xl border border-white/20">
-              <SmartImage src={info.cover!} alt={info.name || "Cover"} className="w-full h-auto object-cover" />
+        {/* Sélecteur de Saisons avec défilement fluide / Swipe tactile */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold text-foreground">Saisons</h2>
+          
+          <div className="w-full overflow-x-auto overflow-y-hidden py-2 touch-pan-x scrollbar-none snap-x active:cursor-grabbing cursor-grab">
+            <div className="flex gap-3 w-max px-1">
+              {seasonsList.map((seasonNum) => {
+                const isSelected = selectedSeason === seasonNum;
+                return (
+                  <button
+                    key={seasonNum}
+                    onClick={() => setSelectedSeason(seasonNum)}
+                    className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shrink-0 snap-start select-none ${
+                      isSelected
+                        ? "bg-primary text-primary-foreground shadow-lg scale-105"
+                        : "bg-card hover:bg-muted text-muted-foreground hover:text-foreground border border-border"
+                    }`}
+                  >
+                    Saison {seasonNum}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Liste des Épisodes */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-foreground">
+            Épisodes - Saison {selectedSeason} ({currentEpisodes.length})
+          </h3>
+
+          {currentEpisodes.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">
+              Aucun épisode disponible pour cette saison.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {currentEpisodes.map((ep) => {
+                const episodeTitle = ep.title || `Épisode ${ep.episode_num}`;
+                const containerExt = ep.container_extension || "mp4";
+                const watchUrl = `/watch?type=series&id=${ep.id}&ext=${containerExt}&title=${encodeURIComponent(
+                  `${seriesData.name || "Série"} - S${selectedSeason}E${ep.episode_num}`
+                )}`;
+
+                return (
+                  <Link
+                    key={ep.id}
+                    href={watchUrl}
+                    className="group flex flex-col justify-between overflow-hidden rounded-xl border border-border bg-card p-4 transition-all duration-200 hover:border-primary hover:shadow-md"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <span className="text-xs font-semibold text-primary">
+                          Épisode {ep.episode_num}
+                        </span>
+                        <h4 className="text-sm font-bold text-foreground group-hover:text-primary line-clamp-1">
+                          {episodeTitle}
+                        </h4>
+                      </div>
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform group-hover:scale-110 group-hover:bg-primary group-hover:text-primary-foreground">
+                        <Play className="h-4 w-4 fill-current ml-0.5" />
+                      </div>
+                    </div>
+
+                    {ep.info?.plot && (
+                      <p className="mt-3 text-xs text-muted-foreground line-clamp-2">
+                        {ep.info.plot}
+                      </p>
+                    )}
+                  </Link>
+                );
+              })}
             </div>
           )}
-
-          <div className="flex-1 space-y-3">
-            <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-white drop-shadow-md">
-              {cleanName(info.name || "")}
-            </h1>
-            
-            <div className="flex items-center gap-3 text-sm font-medium text-fog-300">
-              {info.releaseDate && <span className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-full">{info.releaseDate}</span>}
-              {info.rating && <span className="text-amber-400 font-bold">★ {info.rating}</span>}
-              {info.genre && <span>• {info.genre}</span>}
-            </div>
-
-            {info.plot && (
-              <p className="text-sm text-fog-200 max-w-4xl leading-relaxed line-clamp-3 drop-shadow">
-                {info.plot}
-              </p>
-            )}
-          </div>
         </div>
-      </div>
-
-      {/* DISPOSITION EN 2 COLONNES (Lecteur d'aperçu à gauche / Liste à droite) */}
-      <div className="flex flex-col lg:flex-row gap-8 items-start">
-        
-        {/* LECTEUR D'APERÇU À GAUCHE */}
-        {activeEpisode && watchUrl && (
-          <div className="w-full lg:w-1/2 shrink-0 space-y-3 bg-ink-900/90 p-5 rounded-3xl border border-iris-500/30 shadow-2xl sticky top-6">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-iris-400">
-                Aperçu Épisode {activeEpisode.episode_num}
-              </span>
-              <button
-                onClick={() => setActiveEpisode(null)}
-                className="text-fog-500 hover:text-white p-1 rounded-full transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="aspect-video w-full bg-black rounded-2xl overflow-hidden relative border border-white/10 group shadow-inner">
-              <iframe
-                src={watchUrl}
-                className="w-full h-full pointer-events-none"
-                allow="autoplay; fullscreen"
-              />
-              <Link
-                href={watchUrl}
-                className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-xs"
-              >
-                <div className="bg-iris-500 text-ink-950 px-6 py-3 rounded-full font-bold flex items-center gap-2 transform hover:scale-105 transition-transform shadow-xl">
-                  <Maximize className="h-5 w-5" />
-                  Plein écran
-                </div>
-              </Link>
-            </div>
-
-            <div className="pt-2">
-              <h3 className="text-lg font-bold text-white leading-snug">{cleanName(activeEpisode.title)}</h3>
-              <p className="text-xs text-fog-400 mt-1">Saison {selectedSeason} • Épisode {activeEpisode.episode_num}</p>
-            </div>
-          </div>
-        )}
-
-        {/* LISTE DES SAISONS ET ÉPISODES */}
-        <div className="flex-1 w-full space-y-4">
-          
-          {/* Onglets des Saisons */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-white/5">
-            {seasons.map((s) => (
-              <button
-                key={s}
-                onClick={() => {
-                  setSelectedSeason(s);
-                  setActiveEpisode(null);
-                }}
-                className={cn(
-                  "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all shrink-0",
-                  selectedSeason === s
-                    ? "bg-iris-500 text-ink-950 shadow-lg shadow-iris-500/20"
-                    : "bg-ink-900 text-fog-400 hover:bg-ink-850 hover:text-white"
-                )}
-              >
-                Saison {s}
-              </button>
-            ))}
-          </div>
-
-          {/* Liste des Épisodes */}
-          <div className="space-y-2.5">
-            {currentEpisodes.map((ep) => {
-              const isSelected = activeEpisode?.id === ep.id;
-              return (
-                <button
-                  key={ep.id}
-                  onClick={() => setActiveEpisode(ep)}
-                  className={cn(
-                    "w-full flex items-center gap-4 p-4 rounded-2xl transition-all text-left group",
-                    isSelected
-                      ? "bg-ink-800 border border-iris-500/50 shadow-md"
-                      : "bg-ink-900/60 hover:bg-ink-850 border border-white/5"
-                  )}
-                >
-                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-ink-950 text-iris-400 font-bold text-sm border border-white/5 group-hover:border-iris-500/30">
-                    {ep.episode_num}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="truncate text-base font-medium text-fog-100 group-hover:text-white">
-                      {cleanName(ep.title)}
-                    </p>
-                    {ep.info?.duration && <p className="text-xs text-fog-500 mt-0.5">{ep.info.duration}</p>}
-                  </div>
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink-800 text-fog-400 group-hover:bg-iris-500 group-hover:text-ink-950 transition-colors">
-                    <Play className="h-4.5 w-4.5 translate-x-0.5 fill-current" />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-        </div>
-
-      </div>
-
+      </main>
     </div>
   );
 }
