@@ -9,22 +9,31 @@ export async function GET(request: Request) {
   }
 
   try {
-    const res = await fetch(
-      `https://api.themoviedb.org/3/search/person?api_key=15d260044e2614e361e09315def00661&query=${encodeURIComponent(name)}`,
-      { next: { revalidate: 86400 } } // Cache 24h
+    // 1. Recherche de la photo de l'acteur via l'API publique et gratuite de Wikipedia (sans clé API)
+    const wikiRes = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(
+        name
+      )}&prop=pageimages&format=json&pithumbsize=200&origin=*`,
+      { next: { revalidate: 86400 } }
     );
+    const wikiData = await wikiRes.json();
+    const pages = wikiData?.query?.pages;
 
-    const data = await res.json();
-    const profilePath = data?.results?.[0]?.profile_path;
-
-    if (profilePath) {
-      return NextResponse.json({
-        photoUrl: `https://image.tmdb.org/t/p/w185${profilePath}`,
-      });
+    if (pages) {
+      const pageId = Object.keys(pages)[0];
+      const thumbnail = pages[pageId]?.thumbnail?.source;
+      if (thumbnail) {
+        return NextResponse.json({ photoUrl: thumbnail });
+      }
     }
   } catch (err) {
-    console.error("Actor photo fetch error:", err);
+    console.error("Wikipedia photo fetch error:", err);
   }
 
-  return NextResponse.json({ photoUrl: null });
+  // 2. Fallback direct avec avatar stylisé basé sur le nom de l'acteur si pas de photo disponible
+  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    name
+  )}&background=4f46e5&color=fff&size=128&bold=true`;
+
+  return NextResponse.json({ photoUrl: avatarUrl });
 }
