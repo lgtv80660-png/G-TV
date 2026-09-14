@@ -34,7 +34,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
     setSortKey(s);
   }, []);
 
-  // Filtrage et tri mémorisés pour éviter tout freeze UI
+  // Filtrage et tri mémorisés pour éviter les boucles d'effets et le freeze UI
   const filteredItems = useMemo(() => {
     if (!items || !Array.isArray(items)) return [];
 
@@ -58,6 +58,14 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
 
     return result;
   }, [items, selectedCategory, searchQuery, sortKey]);
+
+  // Générateur d'URL selon le type de contenu
+  const getHref = (item: any) => {
+    const id = item.series_id || item.stream_id || item.id;
+    if (type === "series") return `/series/${id}`;
+    if (type === "movies") return `/movies/${id}`;
+    return `/watch?type=live&id=${id}`;
+  };
 
   if (loading) {
     return (
@@ -86,12 +94,13 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {/* Limitation à 120 éléments pour le rendu initial */}
-          {filteredItems.slice(0, 120).map((item) => (
+          {/* Limitation à 120 éléments pour alléger le rendu initial du DOM */}
+          {filteredItems.slice(0, 120).map((item, index) => (
             <PosterCard
               key={item.series_id || item.stream_id || item.id}
               item={item}
-              type={type}
+              href={getHref(item)}
+              index={index}
             />
           ))}
         </div>
