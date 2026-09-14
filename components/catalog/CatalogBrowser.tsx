@@ -3,8 +3,7 @@
 import React, { useMemo, useCallback, useState } from "react";
 import { PosterCard } from "./PosterCard";
 import { FilterBar } from "./FilterBar";
-
-type SortKey = "added" | "name" | "rating";
+import { SortKey } from "@/lib/utils";
 
 interface CatalogBrowserProps {
   items: any[];
@@ -35,7 +34,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
     setSortKey(s);
   }, []);
 
-  // Filtrage et tri mémorisés pour éviter tout re-rendu inutile ou freeze de l'UI
+  // Filtrage et tri mémorisés pour éviter tout freeze UI
   const filteredItems = useMemo(() => {
     if (!items || !Array.isArray(items)) return [];
 
@@ -51,9 +50,9 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
       return matchesCategory && matchesSearch;
     });
 
-    if (sortKey === "name") {
+    if ((sortKey as string) === "name") {
       result = [...result].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-    } else if (sortKey === "rating") {
+    } else if ((sortKey as string) === "rating") {
       result = [...result].sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0));
     }
 
@@ -87,7 +86,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {/* Limitation à 120 éléments au rendu initial pour alléger la charge du navigateur */}
+          {/* Limitation à 120 éléments pour le rendu initial */}
           {filteredItems.slice(0, 120).map((item) => (
             <PosterCard
               key={item.series_id || item.stream_id || item.id}
