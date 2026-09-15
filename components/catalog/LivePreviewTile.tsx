@@ -12,7 +12,6 @@ export function LivePreviewTile({ className }: { className?: string }) {
   const { t } = useTranslation();
   const { progress } = useLibrary();
 
-  // Récupère la dernière chaîne de télévision lue
   const lastLiveChannel = useMemo(() => {
     const list = Array.isArray(progress) ? progress : Object.values(progress ?? {});
     return list.find((item: any) => item.type === "live" || item.streamId || item.stream_id);
@@ -20,6 +19,7 @@ export function LivePreviewTile({ className }: { className?: string }) {
 
   const streamId = lastLiveChannel?.streamId || lastLiveChannel?.stream_id || lastLiveChannel?.id;
   const streamExt = lastLiveChannel?.ext || "m3u8";
+  const channelTitle = lastLiveChannel?.title || lastLiveChannel?.name || t("Home.liveTv");
 
   return (
     <Link
@@ -29,7 +29,6 @@ export function LivePreviewTile({ className }: { className?: string }) {
         className
       )}
     >
-      {/* Arrière-plan Vidéo Auto-Play Muted s'il y a une chaîne */}
       {streamId ? (
         <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden opacity-40 transition-opacity duration-500 group-hover:opacity-60">
           <div className="h-full w-full [&>div]:h-full [&>div]:w-full [&_video]:h-full [&_video]:w-full [&_video]:object-cover">
@@ -38,21 +37,17 @@ export function LivePreviewTile({ className }: { className?: string }) {
               sources={[`/api/stream?type=live&id=${streamId}&ext=${streamExt}`]}
               ext={streamExt}
               isLive={true}
-              muted={true}
-              autoPlay={true}
+              title={channelTitle}
             />
           </div>
-          {/* Overlay dégradé pour garder le texte lisible */}
           <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/40 to-transparent" />
         </div>
       ) : (
-        /* Arrière-plan par défaut sans vidéo */
         <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-mint-500/10 text-mint-400 border border-mint-500/20">
           <Tv className="h-5 w-5" />
         </div>
       )}
 
-      {/* Superposition d'informations texte */}
       <div className="relative z-10 mt-auto space-y-0.5">
         <div className="flex items-center gap-2">
           {streamId && (
@@ -62,7 +57,7 @@ export function LivePreviewTile({ className }: { className?: string }) {
             </span>
           )}
           <h3 className="text-base font-bold text-white transition-colors group-hover:text-mint-400">
-            {lastLiveChannel?.title || lastLiveChannel?.name || t("Home.liveTv")}
+            {channelTitle}
           </h3>
         </div>
         <p className="text-xs text-fog-400">
