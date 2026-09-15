@@ -47,34 +47,34 @@ const FlipActorCard = ({ name }: { name: string }) => {
           setIsFlipped(!isFlipped);
         }
       }}
-      className="group perspective w-28 sm:w-32 h-40 sm:h-44 flex-shrink-0 cursor-pointer select-none focus:outline-none"
+      className="group perspective w-24 sm:w-28 h-36 sm:h-40 flex-shrink-0 cursor-pointer select-none focus:outline-none"
     >
       <div
-        className={`relative w-full h-full rounded-2xl transition-transform duration-500 transform-style-3d ${
+        className={`relative w-full h-full rounded-xl transition-transform duration-500 transform-style-3d ${
           isFlipped ? "rotate-y-180" : "group-hover:scale-105"
         }`}
       >
-        <div className="absolute inset-0 w-full h-full rounded-2xl overflow-hidden bg-[#181a24] border border-white/10 shadow-lg backface-hidden flex flex-col justify-end">
+        <div className="absolute inset-0 w-full h-full rounded-xl overflow-hidden bg-[#181a24] border border-white/10 shadow-lg backface-hidden flex flex-col justify-end">
           {photoUrl ? (
             <img src={photoUrl} alt={name} className="absolute inset-0 w-full h-full object-cover" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center bg-indigo-950/40 text-indigo-400">
-              <User className="w-8 h-8" />
+              <User className="w-6 h-6" />
             </div>
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-          <div className="relative z-10 p-2 flex items-center justify-between">
-            <span className="text-[11px] font-bold text-white line-clamp-1">{name}</span>
-            <Info className="w-3 h-3 text-indigo-400 opacity-70 flex-shrink-0" />
+          <div className="relative z-10 p-1.5 flex items-center justify-between">
+            <span className="text-[10px] font-bold text-white line-clamp-1">{name}</span>
+            <Info className="w-2.5 h-2.5 text-indigo-400 opacity-70 flex-shrink-0" />
           </div>
         </div>
 
-        <div className="absolute inset-0 w-full h-full rounded-2xl p-2.5 bg-gradient-to-br from-indigo-950 to-[#12141c] border border-indigo-500/40 text-white backface-hidden rotate-y-180 flex flex-col justify-between shadow-xl">
-          <div className="space-y-1 overflow-hidden">
-            <p className="text-[10px] font-bold text-indigo-300 line-clamp-1">{name}</p>
-            <p className="text-[9px] text-zinc-300 leading-snug line-clamp-4">{bio}</p>
+        <div className="absolute inset-0 w-full h-full rounded-xl p-2 bg-gradient-to-br from-indigo-950 to-[#12141c] border border-indigo-500/40 text-white backface-hidden rotate-y-180 flex flex-col justify-between shadow-xl">
+          <div className="space-y-0.5 overflow-hidden">
+            <p className="text-[9px] font-bold text-indigo-300 line-clamp-1">{name}</p>
+            <p className="text-[8px] text-zinc-300 leading-tight line-clamp-4">{bio}</p>
           </div>
-          <span className="text-[8px] text-zinc-500 italic self-end">Retourner</span>
+          <span className="text-[7px] text-zinc-500 italic self-end">Retourner</span>
         </div>
       </div>
     </div>
@@ -164,42 +164,70 @@ export default function SeriesDetailPage() {
         fav={fav}
         onToggleFav={() => toggleFav("series", { id: Number(id), name: cleanName(title), poster: info?.cover })}
       >
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{cleanName(title)}</h1>
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-fog-300">
-          {rating > 0 && (
-            <span className="flex items-center gap-1 font-semibold text-iris-300">
-              <Star className="h-4 w-4 fill-iris-300" /> {rating.toFixed(1)}
-            </span>
+        <div className="space-y-4 max-w-4xl">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{cleanName(title)}</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-fog-300">
+              {rating > 0 && (
+                <span className="flex items-center gap-1 font-semibold text-iris-300">
+                  <Star className="h-4 w-4 fill-iris-300" /> {rating.toFixed(1)}
+                </span>
+              )}
+              {year && <span className="flex items-center gap-1"><Calendar className="h-4 w-4" /> {year}</span>}
+              {info?.genre && <span className="text-fog-400">{info.genre}</span>}
+              <span className="text-fog-500">{seasons.length} saison{seasons.length === 1 ? "" : "s"}</span>
+            </div>
+          </div>
+
+          {(info?.plot || info?.description) && (
+            <p className="text-sm leading-relaxed text-fog-300 font-light">
+              {info.plot || info.description}
+            </p>
           )}
-          {year && <span className="flex items-center gap-1"><Calendar className="h-4 w-4" /> {year}</span>}
-          {info?.genre && <span className="text-fog-400">{info.genre}</span>}
-          <span className="text-fog-500">{seasons.length} saison{seasons.length === 1 ? "" : "s"}</span>
+
+          {/* Casting sans scroll horizontal forcé (Flex wrap pour utiliser l'espace au max) */}
+          {castList.length > 0 && (
+            <div className="pt-3 border-t border-white/10 space-y-2">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <User className="w-3.5 h-3.5 text-iris-400" /> Casting / Acteurs
+              </h3>
+              <div className="flex flex-wrap gap-2.5 pt-1">
+                {castList.slice(0, 8).map((actor: string, idx: number) => (
+                  <FlipActorCard key={idx} name={actor} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {(info?.plot || info?.description) && (
-          <p className="mt-4 max-w-3xl text-sm leading-relaxed text-fog-300 font-light">
-            {info.plot || info.description}
-          </p>
-        )}
-
-        {/* Casting placé DIRECTEMENT sous le synopsis dans la zone supérieure */}
-        {castList.length > 0 && (
-          <div className="mt-6 pt-4 border-t border-white/10 space-y-2.5 max-w-4xl">
-            <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <User className="w-3.5 h-3.5 text-iris-400" /> Casting / Acteurs
-            </h3>
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-iris-500 scrollbar-track-transparent">
-              {castList.map((actor: string, idx: number) => (
-                <FlipActorCard key={idx} name={actor} />
-              ))}
-            </div>
+        {/* Barre des saisons au-dessus de la zone des épisodes */}
+        {seasons.length > 0 && (
+          <div className="mt-8 no-scrollbar flex gap-2 overflow-x-auto pb-2 border-b border-white/5">
+            {seasons.map((s) => {
+              const label = s.toLowerCase().includes("season") || s.toLowerCase().includes("saison") ? s : `Saison ${s}`;
+              return (
+                <button
+                  key={s}
+                  onClick={() => {
+                    setSeasonKey(s);
+                    setActiveEpisode(null);
+                  }}
+                  className={cn(
+                    "shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+                    s === activeSeasonKey ? "bg-iris-400 text-ink-950 font-bold" : "bg-ink-800 text-fog-400 hover:bg-ink-700 hover:text-white",
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         )}
 
-        {/* Zone de lecture & Liste des épisodes (Alignement parfait en haut) */}
-        <div className="mt-8 flex flex-col lg:flex-row gap-6 items-start">
+        {/* Grille : Lecteur d'aperçu aligné EN FACE des épisodes */}
+        <div className="mt-4 flex flex-col lg:flex-row gap-6 items-start">
           
-          {/* Lecteur d'Aperçu (Aligné exactement sur le sommet de la colonne de droite) */}
+          {/* Lecteur d'aperçu à gauche */}
           {activeEpisode && (
             <div className="w-full lg:w-1/2 shrink-0 space-y-3 bg-ink-900 border border-white/10 rounded-2xl p-4 sticky top-6 shadow-2xl z-30">
               <div className="flex items-center justify-between px-1">
@@ -246,88 +274,59 @@ export default function SeriesDetailPage() {
             </div>
           )}
 
-          {/* Saisons & Épisodes */}
-          <div className="flex-1 w-full space-y-4">
-            
-            {/* Onglets des Saisons */}
-            {seasons.length > 0 && (
-              <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
-                {seasons.map((s) => {
-                  const label = s.toLowerCase().includes("season") || s.toLowerCase().includes("saison") ? s : `Saison ${s}`;
-                  return (
-                    <button
-                      key={s}
-                      onClick={() => {
-                        setSeasonKey(s);
-                        setActiveEpisode(null);
-                      }}
-                      className={cn(
-                        "shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-                        s === activeSeasonKey ? "bg-iris-400 text-ink-950 font-bold" : "bg-ink-800 text-fog-400 hover:bg-ink-700 hover:text-white",
-                      )}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+          {/* Liste des Épisodes */}
+          <div className="flex-1 w-full space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
+            {episodes.map((ep: Episode) => {
+              const isSelected = activeEpisode?.id === ep.id;
+              const ext = ep.container_extension || "mp4";
+              const epTitle = ep.title || `Episode ${ep.episode_num}`;
+              const resume = progress[`series:${ep.id}`]?.position ?? 0;
 
-            {/* Liste des Épisodes */}
-            <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
-              {episodes.map((ep: Episode) => {
-                const isSelected = activeEpisode?.id === ep.id;
-                const ext = ep.container_extension || "mp4";
-                const epTitle = ep.title || `Episode ${ep.episode_num}`;
-                const resume = progress[`series:${ep.id}`]?.position ?? 0;
-
-                return (
-                  <div
-                    key={ep.id}
-                    onClick={() => setActiveEpisode(ep)}
-                    className={cn(
-                      "group flex items-center gap-4 rounded-xl border p-2.5 transition-colors cursor-pointer",
-                      isSelected
-                        ? "bg-ink-800 border-iris-500/50 shadow-md"
-                        : "bg-ink-850/60 border-white/5 hover:bg-ink-800"
-                    )}
-                  >
-                    <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-ink-900 sm:w-36">
-                      <SmartImage src={ep.info?.movie_image} alt={epTitle} rounded="rounded-lg" className="h-full w-full" />
-                      <span className="absolute inset-0 grid place-items-center bg-ink-950/30 opacity-0 transition-opacity group-hover:opacity-100">
-                        <span className="grid h-8 w-8 place-items-center rounded-full bg-iris-400 text-ink-950">
-                          <Play className="h-3.5 w-3.5 translate-x-0.5 fill-ink-950" />
-                        </span>
+              return (
+                <div
+                  key={ep.id}
+                  onClick={() => setActiveEpisode(ep)}
+                  className={cn(
+                    "group flex items-center gap-4 rounded-xl border p-2.5 transition-colors cursor-pointer",
+                    isSelected
+                      ? "bg-ink-800 border-iris-500/50 shadow-md"
+                      : "bg-ink-850/60 border-white/5 hover:bg-ink-800"
+                  )}
+                >
+                  <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-ink-900 sm:w-36">
+                    <SmartImage src={ep.info?.movie_image} alt={epTitle} rounded="rounded-lg" className="h-full w-full" />
+                    <span className="absolute inset-0 grid place-items-center bg-ink-950/30 opacity-0 transition-opacity group-hover:opacity-100">
+                      <span className="grid h-8 w-8 place-items-center rounded-full bg-iris-400 text-ink-950">
+                        <Play className="h-3.5 w-3.5 translate-x-0.5 fill-ink-950" />
                       </span>
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 font-medium text-sm">
-                        <span className="text-fog-500">{ep.episode_num}.</span>
-                        <span className="truncate group-hover:text-iris-300 transition-colors">{cleanName(epTitle)}</span>
-                      </p>
-                      {ep.info?.duration && (
-                        <p className="mt-0.5 flex items-center gap-1 text-xs text-fog-500">
-                          <Clock className="h-3 w-3" /> {ep.info.duration}
-                        </p>
-                      )}
-                      {ep.info?.plot && <p className="mt-1 line-clamp-1 text-xs text-fog-400">{ep.info.plot}</p>}
-                    </div>
-
-                    <Link
-                      href={`/watch?type=series&id=${ep.id}&ext=${ext}&title=${encodeURIComponent(`${cleanName(title)} · ${epTitle}`)}&series=${id}${resume > 15 ? `&resume=${Math.floor(resume)}` : ""}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-2 text-fog-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"
-                      title="Lire en plein écran"
-                    >
-                      <Maximize className="w-4 h-4" />
-                    </Link>
+                    </span>
                   </div>
-                );
-              })}
-              {episodes.length === 0 && <p className="text-sm text-fog-500">Aucun épisode répertorié pour cette saison.</p>}
-            </div>
 
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-2 font-medium text-sm">
+                      <span className="text-fog-500">{ep.episode_num}.</span>
+                      <span className="truncate group-hover:text-iris-300 transition-colors">{cleanName(epTitle)}</span>
+                    </p>
+                    {ep.info?.duration && (
+                      <p className="mt-0.5 flex items-center gap-1 text-xs text-fog-500">
+                        <Clock className="h-3 w-3" /> {ep.info.duration}
+                      </p>
+                    )}
+                    {ep.info?.plot && <p className="mt-1 line-clamp-1 text-xs text-fog-400">{ep.info.plot}</p>}
+                  </div>
+
+                  <Link
+                    href={`/watch?type=series&id=${ep.id}&ext=${ext}&title=${encodeURIComponent(`${cleanName(title)} · ${epTitle}`)}&series=${id}${resume > 15 ? `&resume=${Math.floor(resume)}` : ""}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-2 text-fog-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+                    title="Lire en plein écran"
+                  >
+                    <Maximize className="w-4 h-4" />
+                  </Link>
+                </div>
+              );
+            })}
+            {episodes.length === 0 && <p className="text-sm text-fog-500">Aucun épisode répertorié pour cette saison.</p>}
           </div>
 
         </div>
