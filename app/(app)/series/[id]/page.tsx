@@ -30,7 +30,6 @@ function EpisodeImage({
   const [imgSrc, setImgSrc] = useState<string | null>(ep.info?.movie_image || null);
 
   useEffect(() => {
-    // Si Xtream fournit déjà l'image de l'épisode, on l'utilise directement
     if (ep.info?.movie_image) {
       setImgSrc(ep.info.movie_image);
       return;
@@ -38,10 +37,8 @@ function EpisodeImage({
 
     let isMounted = true;
 
-    // 1. Extraire le numéro de la saison (ex: "Saison 1" -> "1")
     const seasonNumber = seasonKey.replace(/\D/g, "") || ep.season || "1";
 
-    // 2. Extraire le numéro de l'épisode (ep.episode_num ou depuis le nom ex: S01E03)
     let episodeNumber = ep.episode_num;
     if (!episodeNumber && ep.title) {
       const match = ep.title.match(/E(\d+)/i);
@@ -49,7 +46,6 @@ function EpisodeImage({
     }
     episodeNumber = episodeNumber || "1";
 
-    // 3. Nettoyer uniquement le nom de la série pour la recherche TMDB
     let cleanTitle = seriesTitle || "";
     cleanTitle = cleanTitle
       .replace(/\./g, " ")
@@ -58,7 +54,6 @@ function EpisodeImage({
       .replace(/\(\d{4}\)/g, "")
       .trim();
 
-    // 4. Appel de l'API en envoyant spécifiquement la SAISON et l'ÉPISODE
     fetch(
       `/api/tmdb?type=episode&id=${tmdbId || ""}&query=${encodeURIComponent(cleanTitle)}&season=${seasonNumber}&episode=${episodeNumber}`
     )
@@ -195,6 +190,7 @@ export default function SeriesDetailPage() {
 
   const [seasonKey, setSeasonKey] = useState<string | null>(null);
   const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
+  const [seasonPoster, setSeasonPoster] = useState<string | null>(null);
 
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
@@ -215,6 +211,44 @@ export default function SeriesDetailPage() {
 
   const activeSeasonKey = seasonKey ?? seasons[0] ?? null;
   const episodes = activeSeasonKey !== null ? episodesBySeason[activeSeasonKey] ?? [] : [];
+
+  const title = (info?.name as string) || (info?.title as string) || "Série";
+
+  // CHARGEMENT DE L'AFFICHE SPÉCIFIQUE DE LA SAISON SELECTIONNÉE (TMDB)
+  useEffect(() => {
+    if (!activeSeasonKey) return;
+
+    let isMounted = true;
+    const seasonNumber = activeSeasonKey.replace(/\D/g, "") || "1";
+    let cleanTitle = cleanName(title)
+      .replace(/\./g, " ")
+      .replace(/S\d+E\d+.*/i, "")
+      .replace(/(VOSTFR|FRENCH|720p|1080p|2160p|WEB-DL|WEBRip|x264|x265|AMZN|NF|-FANATIK|-EXTREME).*/i, "")
+      .replace(/\(\d{4}\)/g, "")
+      .trim();
+
+    fetch(
+      `/api/tmdb?type=season&id=${info?.tmdb_id || ""}&query=${encodeURIComponent(cleanTitle)}&season=${seasonNumber}`
+    )
+      .then((res) => res.json())
+      .then((resData) => {
+        if (!isMounted) return;
+        if (resData?.poster_path) {
+          setSeasonPoster(`https://image.tmdb.org/t/p/w500${resData.poster_path}`);
+        } else if (resData?.imageUrl) {
+          setSeasonPoster(resData.imageUrl);
+        } else {
+          setSeasonPoster(null);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setSeasonPoster(null);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeSeasonKey, title, info?.tmdb_id]);
 
   const handleFullscreenLandscape = async () => {
     const elem = playerContainerRef.current;
@@ -246,7 +280,6 @@ export default function SeriesDetailPage() {
   if (isLoading) return <SeriesSkeleton />;
   if (isError || !data) return <p className="px-8 py-24 text-center text-red-300">Impossible de charger la série.</p>;
 
-  const title = (info?.name as string) || (info?.title as string) || "Série";
   const rating = ratingNum(info?.rating);
   const year = yearFrom(info?.releaseDate || info?.releasedate, title);
   const fav = isFav("series", Number(id));
@@ -254,6 +287,8 @@ export default function SeriesDetailPage() {
   const castList = info?.cast
     ? info.cast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : [];
+
+  const currentPoster = seasonPoster || info?.cover;
 
   return (
     <div className="min-h-screen bg-ink-950 text-white p-3 sm:p-6 space-y-6">
@@ -266,7 +301,7 @@ export default function SeriesDetailPage() {
 
       <DetailHero
         backdrop={info?.backdrop_path?.[0] || info?.backdrop}
-        poster={info?.cover}
+        poster={currentPoster}
         title={title}
         fav={fav}
         onToggleFav={() => toggleFav("series", { id: Number(id), name: cleanName(title), poster: info?.cover })}
@@ -400,7 +435,7 @@ export default function SeriesDetailPage() {
                       seriesTitle={cleanName(title)}
                       tmdbId={info?.tmdb_id}
                       seasonKey={activeSeasonKey || "1"}
-                      fallbackCover={info?.cover || info?.backdrop}
+                      fallbackCover={currentPoster || info?.backdrop}
                     />
                     <span className="absolute inset-0 grid place-items-center bg-ink-950/30 opacity-0 transition-opacity group-hover:opacity-100">
                       <span className="grid h-8 w-8 place-items-center rounded-full bg-iris-400 text-ink-950">
