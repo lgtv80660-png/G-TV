@@ -3,7 +3,7 @@
 import { TopBar } from "@/components/layout/TopBar";
 import { CatalogBrowser } from "@/components/catalog/CatalogBrowser";
 import { useSeriesCategories, useSeriesList } from "@/lib/hooks";
-import type { SeriesItem } from "@/lib/xtream/types";
+import type { Series } from "@/lib/xtream/types";
 
 export default function SeriesPage() {
   const { data: categories = [] } = useSeriesCategories();
@@ -11,7 +11,7 @@ export default function SeriesPage() {
   return (
     <>
       <TopBar title="Series" />
-      <CatalogBrowser<SeriesItem>
+      <CatalogBrowser<Series>
         sectionKey="series"
         categories={categories}
         useItems={(catId) => useSeriesList(catId)}
