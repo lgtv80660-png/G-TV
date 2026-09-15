@@ -22,9 +22,7 @@ export default function MoviesPage() {
           rating: item.rating,
           year: item.added,
         })}
-        hrefFor={(item) =>
-          `/watch?type=movie&id=${item.stream_id}&ext=${item.container_extension || "mp4"}&title=${encodeURIComponent(item.name)}`
-        }
+        hrefFor={(item) => `/movies/${item.stream_id}`}
       />
     </>
   );
