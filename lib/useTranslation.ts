@@ -174,6 +174,7 @@ export function useTranslation() {
 
   useEffect(() => {
     document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
   }, [language]);
 
   const t = (keyPath: string): string => {
