@@ -5,92 +5,28 @@ export interface XtreamCredentials {
 }
 
 export const api = {
-  // --- Live TV ---
-  liveCategories: async () => {
-    const res = await fetch("/api/xtream?action=get_live_categories", { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch live categories");
-    return res.json();
-  },
+  // Live TV
+  liveCategories: () => fetch("/api/xtream?action=get_live_categories").then((r) => r.json()),
+  liveStreams: (catId?: string) =>
+    fetch(`/api/xtream?action=get_live_streams${catId ? `&category_id=${catId}` : ""}`).then((r) => r.json()),
 
-  liveStreams: async (categoryId?: string) => {
-    const url = categoryId
-      ? `/api/xtream?action=get_live_streams&category_id=${categoryId}`
-      : `/api/xtream?action=get_live_streams`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch live streams");
-    return res.json();
-  },
+  // VOD / Films
+  vodCategories: () => fetch("/api/xtream?action=get_vod_categories").then((r) => r.json()),
+  vodStreams: (catId?: string) =>
+    fetch(`/api/xtream?action=get_vod_streams${catId ? `&category_id=${catId}` : ""}`).then((r) => r.json()),
+  vodInfo: (id: string) => fetch(`/api/xtream?action=get_vod_info&vod_id=${id}`).then((r) => r.json()),
 
-  // --- VOD / Films ---
-  vodCategories: async () => {
-    const res = await fetch("/api/xtream?action=get_vod_categories", { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch VOD categories");
-    return res.json();
-  },
+  // Séries
+  getSeriesCategories: () => fetch("/api/xtream?action=get_series_categories").then((r) => r.json()),
+  seriesCategories: () => fetch("/api/xtream?action=get_series_categories").then((r) => r.json()),
+  getSeries: (catId?: string) =>
+    fetch(`/api/xtream?action=get_series${catId ? `&category_id=${catId}` : ""}`).then((r) => r.json()),
+  series: (catId?: string) =>
+    fetch(`/api/xtream?action=get_series${catId ? `&category_id=${catId}` : ""}`).then((r) => r.json()),
+  seriesInfo: (id: string) =>
+    fetch(`/api/xtream?action=get_series_info&series_id=${id}&id=${id}`).then((r) => r.json()),
 
-  vodStreams: async (categoryId?: string) => {
-    const url = categoryId
-      ? `/api/xtream?action=get_vod_streams&category_id=${categoryId}`
-      : `/api/xtream?action=get_vod_streams`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch VOD streams");
-    return res.json();
-  },
-
-  vodInfo: async (id: string) => {
-    const res = await fetch(`/api/xtream?action=get_vod_info&vod_id=${id}`, { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch VOD info");
-    return res.json();
-  },
-
-  // --- Séries ---
-  getSeriesCategories: async () => {
-    const res = await fetch("/api/xtream?action=get_series_categories", { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch series categories");
-    return res.json();
-  },
-
-  // Alias compatible pour hooks.ts
-  seriesCategories: async () => {
-    const res = await fetch("/api/xtream?action=get_series_categories", { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch series categories");
-    return res.json();
-  },
-
-  getSeries: async (categoryId?: string) => {
-    const url = categoryId
-      ? `/api/xtream?action=get_series&category_id=${categoryId}`
-      : `/api/xtream?action=get_series`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch series");
-    return res.json();
-  },
-
-  // Alias compatible pour hooks.ts
-  series: async (categoryId?: string) => {
-    const url = categoryId
-      ? `/api/xtream?action=get_series&category_id=${categoryId}`
-      : `/api/xtream?action=get_series`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch series");
-    return res.json();
-  },
-
-  seriesInfo: async (id: string) => {
-    const res = await fetch(
-      `/api/xtream?action=get_series_info&series_id=${id}&id=${id}`,
-      { cache: "no-store" }
-    );
-    if (!res.ok) throw new Error("Failed to fetch series info");
-    return res.json();
-  },
-
-  // --- EPG ---
-  epg: async (streamId: string) => {
-    const res = await fetch(`/api/xtream?action=get_short_epg&stream_id=${streamId}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch EPG");
-    return res.json();
-  },
+  // EPG
+  epg: (streamId: string | number) =>
+    fetch(`/api/xtream?action=get_short_epg&stream_id=${streamId}`).then((r) => r.json()),
 };
