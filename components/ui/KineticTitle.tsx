@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useTranslation } from "@/lib/useTranslation";
 
 /** Oversized heading whose words rise + fade in with a stagger (kinetic type). */
 export function KineticTitle({
@@ -12,9 +13,12 @@ export function KineticTitle({
   eyebrow?: string;
   className?: string;
 }) {
+  const { language } = useTranslation();
+  const isRtl = language === "ar";
   const words = text.split(" ");
+
   return (
-    <div className={className}>
+    <div className={className} dir={isRtl ? "rtl" : "ltr"}>
       {eyebrow && (
         <motion.p
           initial={{ opacity: 0 }}
