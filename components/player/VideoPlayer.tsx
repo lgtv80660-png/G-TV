@@ -84,7 +84,7 @@ export function VideoPlayer({
   const [activeAudio, setActiveAudio] = useState<number>(0);
 
   // Subtitle Tracks (Native + OpenSubtitles)
-  const [trackList, setTrackList] = useState<Array<{ index: number; label: string; lang?: string; type?: "native" | "external" }>>([]);
+  const [trackList, setTrackList] = useState<Array<{ index: number; label: string; lang?: string }>>([]);
   const [activeTrack, setActiveTrack] = useState<number>(-1); // -1 = off
   const [loadingSubLang, setLoadingSubLang] = useState<string | null>(null);
 
@@ -133,18 +133,22 @@ export function VideoPlayer({
         if (cancelled) return;
         engineRef.current = handle;
 
-        // Extraire les pistes audio native HLS.js si l'instance est disponible
+        // Extraire les pistes audio et sous-titres HLS.js
         const hls = (handle as any)?.hls;
         if (hls) {
-          hls.on("hlsAudioTracksUpdated", (_: any, data: { audioTracks: any[] }) => {
-            const list = data.audioTracks.map((t, idx) => ({
-              id: idx,
-              label: t.name || t.lang || `Audio ${idx + 1}`,
-            }));
-            setAudioTracks(list);
-            setActiveAudio(hls.audioTrack);
-          });
+          const updateAudioTracks = () => {
+            if (hls.audioTracks && hls.audioTracks.length > 0) {
+              const list = hls.audioTracks.map((t: any, idx: number) => ({
+                id: idx,
+                label: t.name || t.lang || `Audio ${idx + 1}`,
+              }));
+              setAudioTracks(list);
+              setActiveAudio(hls.audioTrack);
+            }
+          };
 
+          hls.on("hlsManifestParsed", updateAudioTracks);
+          hls.on("hlsAudioTracksUpdated", updateAudioTracks);
           hls.on("hlsAudioTrackSwitched", (_: any, data: { id: number }) => {
             setActiveAudio(data.id);
           });
@@ -334,7 +338,7 @@ export function VideoPlayer({
     setActiveTrack(idx);
   }, []);
 
-  // Téléchargement / Injection dynamique depuis l'API OpenSubtitles (Arabe, Français, Anglais, Perse)
+  // Téléchargement / Injection dynamique depuis l'API OpenSubtitles
   const fetchExternalSub = async (langCode: string, label: string) => {
     const video = videoRef.current;
     if (!video || !title) return;
@@ -582,8 +586,8 @@ export function VideoPlayer({
           </div>
 
           <div className="ml-auto flex items-center gap-3 sm:gap-4">
-            {/* SÉLECTEUR MULTI-AUDIO (VF / VO / Arabe...) */}
-            {audioTracks.length > 1 && (
+            {/* BOUTON AUDIO MULTI-LANGUES */}
+            {audioTracks.length > 0 && (
               <div className="relative">
                 <button
                   onClick={() => { setAudioMenu((v) => !v); setCapMenu(false); setSpeedMenu(false); }}
@@ -613,7 +617,7 @@ export function VideoPlayer({
               </div>
             )}
 
-            {/* SÉLECTEUR SOUS-TITRES (NATIVE + OPENSUBTITLES) */}
+            {/* SÉLECTEUR SOUS-TITRES */}
             <div className="relative">
               <button
                 onClick={() => { setCapMenu((v) => !v); setAudioMenu(false); setSpeedMenu(false); }}
