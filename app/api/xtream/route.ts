@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { dispatch, XtreamError } from "@/lib/xtream/client";
 import { requireSession } from "@/lib/session";
-import { cached } from "@/lib/xtream/cache";
+import { cachedWithValidation } from "@/lib/xtream/cache";
 
 export const runtime = "nodejs";
 
@@ -46,6 +46,7 @@ export async function GET(req: Request) {
 
   try {
     const ttl = TTL[action] ?? 60 * 1000;
+    
     // Trier les clés de params pour garantir une clé de cache déterministe
     const sortedParams = Object.keys(params).sort().reduce((acc, k) => {
       acc[k] = params[k];
@@ -62,9 +63,23 @@ export async function GET(req: Request) {
       });
     }
 
-    const data = await cached(key, ttl, async () => {
+    // 3. Récupération de l'empreinte serveur (Fast Check léger) pour valider l'état du cache
+    let serverHash = `${creds.username}_${creds.password}`;
+    try {
+      // Vérification rapide de l'état du compte (user_info)
+      const userState = await dispatch(creds, "user_info", {});
+      if (userState?.user_info) {
+        serverHash = `${creds.username}_${userState.user_info.status}_${userState.user_info.exp_date}_${userState.user_info.active_cons}`;
+      }
+    } catch {
+      // En cas d'échec du check léger, on continue avec le hash de fallback
+    }
+
+    // 4. Utilisation du cache intelligent avec validation par hash
+    const data = await cachedWithValidation(key, serverHash, ttl, async () => {
       const result = await dispatch(creds, action, params);
-      // 3. Sécurité : Ne pas mettre en cache si le résultat est nul ou vide
+      
+      // Sécurité : Ne pas mettre en cache si le résultat est nul ou vide
       if (!result || (typeof result === "object" && Object.keys(result).length === 0)) {
         throw new Error("Empty response from upstream provider");
       }
