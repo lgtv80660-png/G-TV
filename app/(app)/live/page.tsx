@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { Tv, Play, ChevronDown, Search } from "lucide-react";
+import { Tv, Play, ChevronDown, Search, Maximize } from "lucide-react";
 
 export default function LiveTvPage() {
   const [categories, setCategories] = useState<any[]>([]);
@@ -12,6 +12,9 @@ export default function LiveTvPage() {
   const [selectedChannel, setSelectedChannel] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState(true);
+
+  const playerContainerRef = useRef<HTMLDivElement>(null);
+  const lastTapRef = useRef<number>(0);
 
   useEffect(() => {
     Promise.all([api.liveCategories(), api.liveStreams()])
@@ -22,7 +25,6 @@ export default function LiveTvPage() {
         setCategories(catList);
         setChannels(streamList);
 
-        // Sélectionne la première catégorie et la première chaîne par défaut
         if (catList.length > 0) {
           setSelectedCategory(String(catList[0].category_id));
         }
@@ -33,6 +35,35 @@ export default function LiveTvPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  // Plein écran horizontal au double tap
+  const handleFullscreenLandscape = async () => {
+    const elem = playerContainerRef.current;
+    if (!elem) return;
+
+    try {
+      if (elem.requestFullscreen) {
+        await elem.requestFullscreen();
+      } else if ((elem as any).webkitRequestFullscreen) {
+        await (elem as any).webkitRequestFullscreen();
+      }
+
+      if (window.screen?.orientation && "lock" in window.screen.orientation) {
+        await (window.screen.orientation as any).lock("landscape").catch(() => {});
+      }
+    } catch (err) {
+      console.error("Erreur plein écran:", err);
+    }
+  };
+
+  const handleDoubleTap = () => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+    if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+      handleFullscreenLandscape();
+    }
+    lastTapRef.current = now;
+  };
 
   const filteredChannels = channels.filter((ch) => {
     const matchesCategory =
@@ -56,7 +87,7 @@ export default function LiveTvPage() {
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-4 md:p-6 space-y-4">
       <h1 className="text-xl font-bold tracking-tight">Live TV</h1>
 
-      {/* Dropdown Mobile pour les Catégories */}
+      {/* Dropdown Mobile */}
       <div className="block md:hidden relative">
         <label className="text-xs font-semibold text-zinc-400 mb-1 block">
           Catégorie :
@@ -81,17 +112,17 @@ export default function LiveTvPage() {
       {/* Grid 3 Colonnes Web */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
         
-        {/* Colonne 1 : Catégories (Web) */}
-        <div className="hidden md:flex md:col-span-3 bg-[#12141c] border border-white/5 rounded-2xl p-4 flex-col gap-1.5 h-[calc(100vh-140px)] overflow-y-auto">
+        {/* Colonne 1 : Catégories lisibles sans troncature */}
+        <div className="hidden md:flex md:col-span-4 lg:col-span-3 bg-[#12141c] border border-white/5 rounded-2xl p-4 flex-col gap-1.5 h-[calc(100vh-140px)] overflow-y-auto">
           <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2">
             Catégories
           </h2>
           <button
             onClick={() => setSelectedCategory("all")}
-            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-medium transition-colors ${
+            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors ${
               selectedCategory === "all"
                 ? "bg-indigo-600 text-white font-bold"
-                : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                : "text-zinc-300 hover:bg-white/5 hover:text-white"
             }`}
           >
             Toutes les chaînes
@@ -102,10 +133,10 @@ export default function LiveTvPage() {
               <button
                 key={cat.category_id}
                 onClick={() => setSelectedCategory(String(cat.category_id))}
-                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-medium transition-colors truncate ${
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors whitespace-normal break-words leading-snug ${
                   isActive
                     ? "bg-indigo-600 text-white font-bold"
-                    : "text-zinc-400 hover:bg-white/5 hover:text-white"
+                    : "text-zinc-300 hover:bg-white/5 hover:text-white"
                 }`}
               >
                 {cat.category_name}
@@ -115,7 +146,7 @@ export default function LiveTvPage() {
         </div>
 
         {/* Colonne 2 : Chaînes */}
-        <div className="col-span-1 md:col-span-4 bg-[#12141c] border border-white/5 rounded-2xl p-4 space-y-3 h-[380px] md:h-[calc(100vh-140px)] overflow-y-auto flex flex-col">
+        <div className="col-span-1 md:col-span-4 lg:col-span-4 bg-[#12141c] border border-white/5 rounded-2xl p-4 space-y-3 h-[380px] md:h-[calc(100vh-140px)] overflow-y-auto flex flex-col">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
               Chaînes ({filteredChannels.length})
@@ -157,11 +188,28 @@ export default function LiveTvPage() {
           </div>
         </div>
 
-        {/* Colonne 3 : Lecteur TV (Remplissage 100% de la zone vidéo) */}
-        <div className="col-span-1 md:col-span-5 space-y-3 bg-[#12141c] border border-white/5 rounded-2xl p-4 sticky top-4">
+        {/* Colonne 3 : Lecteur Live TV avec double-tap */}
+        <div className="col-span-1 md:col-span-4 lg:col-span-5 space-y-3 bg-[#12141c] border border-white/5 rounded-2xl p-4 sticky top-4">
           {selectedChannel ? (
             <>
-              <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5">
+              <div className="flex items-center justify-between px-1">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 truncate max-w-[80%]">
+                  {selectedChannel.name}
+                </h3>
+                <button
+                  onClick={handleFullscreenLandscape}
+                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
+                  title="Plein Écran Horizontal"
+                >
+                  <Maximize className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div
+                ref={playerContainerRef}
+                onClick={handleDoubleTap}
+                className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5 cursor-pointer"
+              >
                 <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
                   <VideoPlayer
                     key={selectedChannel.stream_id}
@@ -174,12 +222,9 @@ export default function LiveTvPage() {
                   />
                 </div>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">{selectedChannel.name}</h3>
-                <p className="text-[11px] text-zinc-500">
-                  Cliquez sur la vidéo pour passer en plein écran.
-                </p>
-              </div>
+              <p className="text-[11px] text-zinc-500">
+                Double-tapez sur la vidéo pour passer en plein écran horizontal.
+              </p>
             </>
           ) : (
             <div className="aspect-video w-full rounded-xl bg-black/50 border border-white/5 flex items-center justify-center text-xs text-zinc-500">
