@@ -152,16 +152,33 @@ export function ContinueTile({ items, className }: { items: WatchProgress[]; cla
         <span className="font-mono text-[10px] uppercase tracking-widest text-fog-500">resume</span>
       </p>
       <div className="-mr-2 flex flex-1 flex-col gap-2 overflow-y-auto pr-2">
-        {items.slice(0, 4).map((p) => {
+        {items.slice(0, 4).map((p: any) => {
           const pct = p.duration > 0 ? (p.position / p.duration) * 100 : 0;
+          
+          // Recherche exhaustive de l'image de couverture
+          const posterUrl =
+            p.poster ||
+            p.cover ||
+            p.stream_icon ||
+            p.movie_image ||
+            p.posterUrl ||
+            p.image ||
+            p.icon;
+
           return (
             <Link
               key={p.key}
               href={`/watch?type=${p.kind}&id=${p.id}&ext=${p.ext}&title=${encodeURIComponent(p.title)}&resume=${Math.floor(p.position)}${p.seriesId ? `&series=${p.seriesId}` : ""}`}
               className="group flex items-center gap-3 rounded-xl p-1.5 transition-colors hover:bg-white/5"
             >
-              <div className="relative h-12 w-9 shrink-0 overflow-hidden rounded-md bg-ink-800">
-                <SmartImage src={p.poster} alt={p.title} rounded="rounded-md" className="h-full w-full" />
+              <div className="relative h-12 w-9 shrink-0 overflow-hidden rounded-md bg-ink-800 border border-white/10 flex items-center justify-center">
+                {posterUrl ? (
+                  <SmartImage src={posterUrl} alt={p.title} rounded="rounded-md" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-iris-500/20 text-[10px] font-bold text-iris-300">
+                    {(p.title || "TV").slice(0, 2).toUpperCase()}
+                  </div>
+                )}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{cleanName(p.title)}</p>
