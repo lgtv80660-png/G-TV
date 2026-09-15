@@ -111,9 +111,9 @@ export function useSeries(categoryId?: string) {
   return { data, loading };
 }
 
+// Aliases pour la compatibilité avec tous les composants
 export const useSeriesList = useSeries;
 
-// Hook manquant qui faisait planter l'application
 export function useSeriesInfo(id?: string) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
