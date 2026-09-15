@@ -9,7 +9,12 @@ import { useTranslation } from "@/lib/useTranslation";
 export default function HomePage() {
   const { t } = useTranslation();
   const { data: movies = [] } = useVodStreams();
-  const { history = [] } = useLibrary();
+  const library = useLibrary();
+
+  // Extraction propre des éléments en cours de lecture
+  const progressList = Array.isArray(library.progress)
+    ? library.progress
+    : Object.values(library.progress ?? {});
 
   // Préparation des éléments à l'affiche (Featured)
   const heroItems = movies.slice(0, 5).map((m) => ({
@@ -63,8 +68,8 @@ export default function HomePage() {
           </div>
 
           {/* Reprendre la lecture */}
-          {history.length > 0 && (
-            <ContinueTile items={history} className="col-span-1 md:col-span-12" />
+          {progressList.length > 0 && (
+            <ContinueTile items={progressList} className="col-span-1 md:col-span-12" />
           )}
         </div>
       </main>
