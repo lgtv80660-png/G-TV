@@ -2,28 +2,15 @@
   "name": "g-tv",
   "version": "0.1.0",
   "private": true,
-  "description": "A cinematic, self-hosted Xtream Codes / IPTV web player — Live TV, Movies & Series — built with Next.js.",
+  "description": "A cinematic IPTV web player built with Next.js.",
   "license": "MIT",
-  "author": "GMZ",
-  "homepage": "https://gmztv.vercel.app",
-  "repository": {
-    "type": "git",
-    "url": "git+https://gmztv.vercel.app"
-  },
-  "keywords": [
-    "iptv",
-    "xtream-codes",
-    "m3u",
-    "video-player",
-    "nextjs",
-    "live-tv",
-    "self-hosted"
-  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.20.6",
@@ -48,9 +35,9 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.9",
+    "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "wrangler": "^3.114.0"
+    "wrangler": "^4.131.2"
   }
 }
