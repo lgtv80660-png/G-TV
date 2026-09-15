@@ -10,19 +10,22 @@ import Link from "next/link";
 export default function SeriesDetailPage() {
   const { id } = useParams();
   const [seriesInfo, setSeriesInfo] = useState<any>(null);
-  const [activeSeason, setActiveSeason] = useState<string>("1");
+  const [activeSeason, setActiveSeason] = useState<string>("");
   const [activeEpisode, setActiveEpisode] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!id) return;
+    setLoading(true);
     api
       .seriesInfo(id as string)
       .then((data) => {
         setSeriesInfo(data);
         if (data?.episodes) {
           const seasons = Object.keys(data.episodes);
-          if (seasons.length > 0) setActiveSeason(seasons[0]);
+          if (seasons.length > 0) {
+            setActiveSeason(seasons[0]);
+          }
         }
       })
       .catch(console.error)
@@ -37,9 +40,14 @@ export default function SeriesDetailPage() {
     );
   }
 
-  const info = seriesInfo?.info || {};
+  // Support des différents formats de retour d'API Xtream Codes
+  const info = seriesInfo?.info || seriesInfo?.series_info || seriesInfo || {};
   const episodesBySeason = seriesInfo?.episodes || {};
-  const currentEpisodes = episodesBySeason[activeSeason] || [];
+  const seasonKeys = Object.keys(episodesBySeason);
+
+  // Clé de la saison active (Fallback sur la première saison disponible si activeSeason n'est pas définie)
+  const currentSeasonKey = activeSeason || seasonKeys[0] || "";
+  const currentEpisodes = episodesBySeason[currentSeasonKey] || [];
 
   const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover;
 
@@ -71,14 +79,17 @@ export default function SeriesDetailPage() {
           {info.cover && (
             <img
               src={info.cover}
-              alt={info.name}
+              alt={info.name || "Série"}
               className="w-36 aspect-[2/3] object-cover rounded-xl shadow-2xl border border-white/10 flex-shrink-0"
             />
           )}
 
           <div className="space-y-3 flex-1">
             <h1 className="text-3xl font-extrabold tracking-tight text-white">
-              {info.name} {info.releaseDate || info.year ? `(${info.releaseDate?.slice(0, 4) || info.year})` : ""}
+              {info.name || "Série sans titre"}{" "}
+              {info.releaseDate || info.year
+                ? `(${info.releaseDate?.slice(0, 4) || info.year})`
+                : ""}
             </h1>
 
             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 font-medium">
@@ -93,9 +104,7 @@ export default function SeriesDetailPage() {
                 </span>
               )}
               {info.genre && (
-                <span className="text-zinc-400">
-                  • {info.genre}
-                </span>
+                <span className="text-zinc-400">• {info.genre}</span>
               )}
             </div>
 
@@ -110,7 +119,6 @@ export default function SeriesDetailPage() {
 
       {/* Grid avec Lecteur et Liste */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
         {/* Aperçu Épisode */}
         {activeEpisode && (
           <div className="lg:col-span-5 space-y-3 bg-[#12141c] border border-white/10 rounded-2xl p-4 sticky top-6 shadow-2xl">
@@ -127,31 +135,44 @@ export default function SeriesDetailPage() {
               </button>
             </div>
 
-            {/* FIXE DU LECTEUR: Aspect Ratio 16/9 forcé + conteneur absolu */}
+            {/* Lecteur Vidéo */}
             <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5">
               <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
                 <VideoPlayer
                   key={activeEpisode.id}
-                  sources={[`/api/stream?type=series&id=${activeEpisode.id}&ext=${activeEpisode.container_extension || "mp4"}`]}
+                  sources={[
+                    `/api/stream?type=series&id=${activeEpisode.id}&ext=${
+                      activeEpisode.container_extension || "mp4"
+                    }`,
+                  ]}
                   ext={activeEpisode.container_extension || "mp4"}
                   isLive={false}
-                  title={`${info.name} - S${activeEpisode.season}E${activeEpisode.episode_num} - ${activeEpisode.title}`}
+                  title={`${info.name || ""} - S${activeEpisode.season}E${
+                    activeEpisode.episode_num
+                  } - ${activeEpisode.title}`}
                 />
               </div>
             </div>
 
             <p className="text-xs font-semibold text-zinc-200 line-clamp-1">
-              S{activeEpisode.season}E{activeEpisode.episode_num} - {activeEpisode.title}
+              S{activeEpisode.season}E{activeEpisode.episode_num} -{" "}
+              {activeEpisode.title}
             </p>
           </div>
         )}
 
-        {/* Épisodes */}
-        <div className={activeEpisode ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
-          
+        {/* Liste des Épisodes */}
+        <div
+          className={
+            activeEpisode
+              ? "lg:col-span-7 space-y-4"
+              : "lg:col-span-12 space-y-4"
+          }
+        >
+          {/* Sélection des Saisons */}
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {Object.keys(episodesBySeason).map((seasonNum) => {
-              const isActive = activeSeason === seasonNum;
+            {seasonKeys.map((seasonNum) => {
+              const isActive = currentSeasonKey === seasonNum;
               return (
                 <button
                   key={seasonNum}
@@ -168,6 +189,7 @@ export default function SeriesDetailPage() {
             })}
           </div>
 
+          {/* Cartes Épisodes */}
           <div className="space-y-2.5">
             {currentEpisodes.map((ep: any) => {
               const isSelected = activeEpisode?.id === ep.id;
@@ -215,7 +237,6 @@ export default function SeriesDetailPage() {
             })}
           </div>
         </div>
-
       </div>
     </div>
   );
