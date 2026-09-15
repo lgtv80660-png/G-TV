@@ -1,11 +1,7 @@
-// TTL cache for catalog JSON with an on-disk layer. The Xtream API is slow and
-// unpaginated (the full VOD list can take 20s+), so we fetch once and persist to
-// disk — like the SQLite-backed players — so server restarts don't re-pay it.
+// TTL cache for catalog JSON with an in-memory layer and optional best-effort disk layer.
+// Disk I/O is automatically bypassed when running on serverless/edge runtimes (e.g. Cloudflare Workers).
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 interface Entry {
   value: unknown;
@@ -15,19 +11,53 @@ interface Entry {
 const store = new Map<string, Entry>();
 const DEFAULT_TTL = 10 * 60 * 1000;
 
-const CACHE_DIR = process.env.LUMEN_CACHE_DIR || join(tmpdir(), "G-Player-cache");
-let dirReady = false;
-function ensureDir() {
-  if (dirReady) return;
-  try {
-    mkdirSync(CACHE_DIR, { recursive: true });
-  } catch {
-    /* ignore */
-  }
-  dirReady = true;
+let fsModule: typeof import("node:fs") | null = null;
+let pathModule: typeof import("node:path") | null = null;
+let osModule: typeof import("node:os") | null = null;
+
+// Dynamically load node modules only if filesystem is available
+try {
+  fsModule = require("node:fs");
+  pathModule = require("node:path");
+  osModule = require("node:os");
+} catch {
+  /* running on edge/workers without native fs */
 }
-function fileFor(key: string) {
-  return join(CACHE_DIR, createHash("sha1").update(key).digest("hex") + ".json");
+
+let cacheDir: string | null = null;
+let dirReady = false;
+
+function getCacheDir(): string | null {
+  if (cacheDir) return cacheDir;
+  if (process.env.LUMEN_CACHE_DIR) {
+    cacheDir = process.env.LUMEN_CACHE_DIR;
+  } else if (osModule && pathModule) {
+    try {
+      cacheDir = pathModule.join(osModule.tmpdir(), "G-Player-cache");
+    } catch {
+      return null;
+    }
+  }
+  return cacheDir;
+}
+
+function ensureDir() {
+  if (dirReady || !fsModule) return;
+  const dir = getCacheDir();
+  if (!dir) return;
+  try {
+    fsModule.mkdirSync(dir, { recursive: true });
+    dirReady = true;
+  } catch {
+    /* best-effort */
+  }
+}
+
+function fileFor(key: string): string | null {
+  const dir = getCacheDir();
+  if (!dir || !pathModule) return null;
+  const hash = createHash("sha1").update(key).digest("hex");
+  return pathModule.join(dir, `${hash}.json`);
 }
 
 export function cacheGet<T>(key: string): T | undefined {
@@ -45,9 +75,12 @@ export function cacheSet(key: string, value: unknown, ttl = DEFAULT_TTL): void {
 }
 
 function diskGet<T>(key: string): T | undefined {
+  if (!fsModule) return undefined;
   ensureDir();
+  const filePath = fileFor(key);
+  if (!filePath) return undefined;
   try {
-    const raw = readFileSync(fileFor(key), "utf8");
+    const raw = fsModule.readFileSync(filePath, "utf8");
     const entry = JSON.parse(raw) as Entry;
     if (Date.now() > entry.expires) return undefined;
     return entry.value as T;
@@ -57,15 +90,18 @@ function diskGet<T>(key: string): T | undefined {
 }
 
 function diskSet(key: string, value: unknown, ttl: number): void {
+  if (!fsModule) return;
   ensureDir();
+  const filePath = fileFor(key);
+  if (!filePath) return;
   try {
-    writeFileSync(fileFor(key), JSON.stringify({ value, expires: Date.now() + ttl }));
+    fsModule.writeFileSync(filePath, JSON.stringify({ value, expires: Date.now() + ttl }));
   } catch {
     /* best-effort */
   }
 }
 
-/** Wrap an async producer with memory + disk cache. */
+/** Wrap an async producer with memory + optional disk cache. */
 export async function cached<T>(key: string, ttl: number, fn: () => Promise<T>): Promise<T> {
   const mem = cacheGet<T>(key);
   if (mem !== undefined) return mem;
