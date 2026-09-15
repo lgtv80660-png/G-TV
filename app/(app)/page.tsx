@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { TopBar } from "@/components/layout/TopBar";
 import { KineticTitle } from "@/components/ui/KineticTitle";
 import { FeaturedTile, NavTile, ContinueTile } from "@/components/catalog/Bento";
+import { LivePreviewTile } from "@/components/catalog/LivePreviewTile";
 import { type HeroItem } from "@/components/catalog/Hero";
 import { Shelf } from "@/components/catalog/Shelf";
 import { PosterCard } from "@/components/catalog/PosterCard";
@@ -83,7 +84,9 @@ export default function HomePage() {
             />
           )}
 
-          <NavTile href="/live" title={t("Home.liveTv")} subtitle={t("Home.channelsEpg")} icon="live" tint="mint" className="col-span-1 row-span-1" />
+          {/* Tuile Live TV dynamique avec aperçu vidéo de la dernière chaîne */}
+          <LivePreviewTile className="col-span-1 row-span-1" />
+
           <NavTile href="/favourites" title={t("Home.myList")} subtitle={t("Home.savedLater")} icon="heart" tint="iris" className="col-span-1 row-span-1" />
         </div>
       </div>
