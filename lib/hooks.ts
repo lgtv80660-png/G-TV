@@ -111,6 +111,9 @@ export function useSeries(categoryId?: string) {
   return { data, loading };
 }
 
+// Alias pour compatibilité avec app/series/page.tsx
+export const useSeriesList = useSeries;
+
 export function useEPG(streamId?: string | number) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
