@@ -17,31 +17,38 @@ export default function SeriesDetailPage() {
   const { data, isLoading, isError } = useSeriesInfo(id);
   const { isFav, toggleFav, progress } = useLibrary();
 
-  const seasons = useMemo(() => {
-    if (!data?.episodes) return [];
-    return Object.keys(data.episodes)
-      .map((n) => Number(n))
-      .filter((n) => (data.episodes[String(n)] ?? []).length > 0)
-      .sort((a, b) => a - b);
-  }, [data]);
+  // Extraction flexible des métadonnées (info vs series_info vs racine)
+  const info = data?.info || data?.series_info || (data && !data.episodes ? data : {}) || {};
+  const episodesBySeason = data?.episodes ?? {};
 
-  const [season, setSeason] = useState<number | null>(null);
-  const activeSeason = season ?? seasons[0] ?? null;
+  // Extraction et tri robuste des saisons (support des clés "1", "01", "Season 1", etc.)
+  const seasons = useMemo(() => {
+    if (!episodesBySeason) return [];
+    return Object.keys(episodesBySeason)
+      .filter((k) => (episodesBySeason[k] ?? []).length > 0)
+      .sort((a, b) => {
+        const numA = parseInt(a.replace(/\D/g, ""), 10) || 0;
+        const numB = parseInt(b.replace(/\D/g, ""), 10) || 0;
+        return numA - numB;
+      });
+  }, [episodesBySeason]);
+
+  const [seasonKey, setSeasonKey] = useState<string | null>(null);
+  const activeSeasonKey = seasonKey ?? seasons[0] ?? null;
 
   if (isLoading) return <SeriesSkeleton />;
   if (isError || !data) return <p className="px-8 py-24 text-center text-red-300">Couldn’t load this series.</p>;
 
-  const info = data.info;
-  const title = (info?.name as string) || "Series";
+  const title = (info?.name as string) || (info?.title as string) || "Series";
   const rating = ratingNum(info?.rating);
-  const year = yearFrom(info?.releaseDate, info?.name as string);
+  const year = yearFrom(info?.releaseDate || info?.releasedate, title);
   const fav = isFav("series", Number(id));
 
-  const episodes = activeSeason !== null ? data.episodes[String(activeSeason)] ?? [] : [];
+  const episodes = activeSeasonKey !== null ? episodesBySeason[activeSeasonKey] ?? [] : [];
 
   return (
     <DetailHero
-      backdrop={info?.backdrop_path?.[0]}
+      backdrop={info?.backdrop_path?.[0] || info?.backdrop}
       poster={info?.cover}
       title={title}
       fav={fav}
@@ -59,30 +66,43 @@ export default function SeriesDetailPage() {
         <span className="text-fog-500">{seasons.length} season{seasons.length === 1 ? "" : "s"}</span>
       </div>
 
-      {info?.plot && <p className="mt-5 max-w-2xl text-sm leading-relaxed text-fog-300">{info.plot}</p>}
+      {(info?.plot || info?.description) && (
+        <p className="mt-5 max-w-2xl text-sm leading-relaxed text-fog-300">
+          {info.plot || info.description}
+        </p>
+      )}
 
-      {/* season selector */}
+      {/* Season selector */}
       {seasons.length > 0 && (
         <div className="no-scrollbar mt-8 flex gap-2 overflow-x-auto pb-1">
-          {seasons.map((s) => (
-            <button
-              key={s}
-              onClick={() => setSeason(s)}
-              className={cn(
-                "shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-                s === activeSeason ? "bg-iris-400 text-ink-950" : "bg-ink-800 text-fog-400 hover:bg-ink-700",
-              )}
-            >
-              Season {s}
-            </button>
-          ))}
+          {seasons.map((s) => {
+            const label = s.toLowerCase().includes("season") ? s : `Season ${s}`;
+            return (
+              <button
+                key={s}
+                onClick={() => setSeasonKey(s)}
+                className={cn(
+                  "shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+                  s === activeSeasonKey ? "bg-iris-400 text-ink-950" : "bg-ink-800 text-fog-400 hover:bg-ink-700",
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* episodes */}
+      {/* Episodes list */}
       <div className="mt-5 max-w-3xl space-y-2.5 pb-12">
-        {episodes.map((ep) => (
-          <EpisodeRow key={ep.id} ep={ep} seriesId={id} title={title} resume={progress[`series:${ep.id}`]?.position ?? 0} />
+        {episodes.map((ep: Episode) => (
+          <EpisodeRow
+            key={ep.id}
+            ep={ep}
+            seriesId={id}
+            title={title}
+            resume={progress[`series:${ep.id}`]?.position ?? 0}
+          />
         ))}
         {episodes.length === 0 && <p className="text-sm text-fog-500">No episodes listed for this season.</p>}
       </div>
@@ -142,7 +162,11 @@ function SeriesSkeleton() {
           <Skeleton className="h-9 w-2/3" />
           <Skeleton className="h-4 w-1/3" />
           <Skeleton className="h-24 w-full max-w-2xl" />
-          <div className="flex gap-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8 w-24 rounded-full" />)}</div>
+          <div className="flex gap-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-8 w-24 rounded-full" />
+            ))}
+          </div>
         </div>
       </div>
     </div>
