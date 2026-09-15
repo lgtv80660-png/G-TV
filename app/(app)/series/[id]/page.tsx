@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Play, Star, Calendar, Clock, X, User, Info, Maximize } from "lucide-react";
 import { DetailHero } from "@/components/catalog/DetailHero";
-import SmartImage from "@/components/ui/SmartImage"; // Import direct sécurisé
+import { SmartImage } from "@/components/ui/SmartImage";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { useSeriesInfo } from "@/lib/hooks";
@@ -13,7 +13,7 @@ import { useLibrary } from "@/store/library";
 import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
 import type { Episode } from "@/lib/xtream/types";
 
-// Composant pour l'image d'épisode
+// Composant pour l'image d'épisode (Xtream -> TMDB -> Fallback Cover)
 function EpisodeImage({
   ep,
   seriesTitle,
@@ -30,21 +30,24 @@ function EpisodeImage({
   const [imgSrc, setImgSrc] = useState<string | null>(ep.info?.movie_image || fallbackCover || null);
 
   useEffect(() => {
-    // Si Xtream a déjà fourni l'image de l'épisode, on l'utilise directement
     if (ep.info?.movie_image) return;
 
     let isMounted = true;
     const cleanSeason = seasonKey.replace(/\D/g, "") || "1";
     const cleanTitle = seriesTitle.split("-")[0].replace(/\(\d{4}\)/g, "").trim();
 
-    // Utilisation directe de ton API /api/tmdb existante
-    fetch(`/api/tmdb?type=episode&id=${tmdbId || ""}&query=${encodeURIComponent(cleanTitle)}&season=${cleanSeason}&episode=${ep.episode_num}`)
+    fetch(
+      `/api/tmdb?type=episode&id=${tmdbId || ""}&query=${encodeURIComponent(cleanTitle)}&season=${cleanSeason}&episode=${ep.episode_num}`
+    )
       .then((res) => res.json())
       .then((data) => {
-        if (isMounted && data?.still_path) {
+        if (!isMounted) return;
+        if (data?.still_path) {
           setImgSrc(`https://image.tmdb.org/t/p/w500${data.still_path}`);
-        } else if (isMounted && data?.imageUrl) {
+        } else if (data?.imageUrl) {
           setImgSrc(data.imageUrl);
+        } else if (data?.image) {
+          setImgSrc(data.image);
         }
       })
       .catch(() => {});
