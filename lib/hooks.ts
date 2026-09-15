@@ -1,48 +1,129 @@
-"use client";
-
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { api } from "./api";
 
-export const useLiveCategories = () =>
-  useQuery({ queryKey: ["live", "cats"], queryFn: api.liveCategories });
+export function useLiveCategories() {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-export const useLiveStreams = (categoryId?: string, enabled = true) =>
-  useQuery({
-    queryKey: ["live", "streams", categoryId ?? "all"],
-    queryFn: () => api.liveStreams(categoryId),
-    enabled,
-  });
+  useEffect(() => {
+    api
+      .liveCategories()
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
-export const useVodCategories = () =>
-  useQuery({ queryKey: ["vod", "cats"], queryFn: api.vodCategories });
+  return { data, loading };
+}
 
-export const useVodStreams = (categoryId?: string, enabled = true) =>
-  useQuery({
-    queryKey: ["vod", "streams", categoryId ?? "all"],
-    queryFn: () => api.vodStreams(categoryId),
-    enabled,
-  });
+export function useLiveStreams(categoryId?: string) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-export const useVodInfo = (id?: string) =>
-  useQuery({ queryKey: ["vod", "info", id], queryFn: () => api.vodInfo(id!), enabled: !!id });
+  useEffect(() => {
+    setLoading(true);
+    api
+      .liveStreams(categoryId)
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [categoryId]);
 
-export const useSeriesCategories = () =>
-  useQuery({ queryKey: ["series", "cats"], queryFn: api.seriesCategories });
+  return { data, loading };
+}
 
-export const useSeriesList = (categoryId?: string, enabled = true) =>
-  useQuery({
-    queryKey: ["series", "list", categoryId ?? "all"],
-    queryFn: () => api.series(categoryId),
-    enabled,
-  });
+export function useVodCategories() {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-export const useSeriesInfo = (id?: string) =>
-  useQuery({ queryKey: ["series", "info", id], queryFn: () => api.seriesInfo(id!), enabled: !!id });
+  useEffect(() => {
+    api
+      .vodCategories()
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
-export const useEpg = (streamId?: number, enabled = true) =>
-  useQuery({
-    queryKey: ["epg", streamId],
-    queryFn: () => api.epg(streamId!),
-    enabled: !!streamId && enabled,
-    staleTime: 60_000,
-  });
+  return { data, loading };
+}
+
+export function useVodStreams(categoryId?: string) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api
+      .vodStreams(categoryId)
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [categoryId]);
+
+  return { data, loading };
+}
+
+export function useVodInfo(id?: string) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    api
+      .vodInfo(id)
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  return { data, loading };
+}
+
+export function useSeriesCategories() {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .getSeriesCategories()
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  return { data, loading };
+}
+
+export function useSeries(categoryId?: string) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api
+      .getSeries(categoryId)
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [categoryId]);
+
+  return { data, loading };
+}
+
+export function useEPG(streamId?: string | number) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!streamId) return;
+    setLoading(true);
+    api
+      .epg(String(streamId))
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [streamId]);
+
+  return { data, loading };
+}
