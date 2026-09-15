@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { Play, ArrowLeft, Star, Heart, X, User, Film, Info } from "lucide-react";
+import { Play, ArrowLeft, Star, Heart, X, User, Film, Info, Maximize } from "lucide-react";
 import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
@@ -81,6 +81,9 @@ export default function MovieDetailPage() {
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
 
+  const playerContainerRef = useRef<HTMLDivElement>(null);
+  const lastTapRef = useRef<number>(0);
+
   const { toggleFav, isFav } = useLibrary();
 
   useEffect(() => {
@@ -91,6 +94,37 @@ export default function MovieDetailPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Fonction pour basculer en Plein Écran Horizontal sur mobile
+  const handleFullscreenLandscape = async () => {
+    const elem = playerContainerRef.current;
+    if (!elem) return;
+
+    try {
+      if (elem.requestFullscreen) {
+        await elem.requestFullscreen();
+      } else if ((elem as any).webkitRequestFullscreen) {
+        await (elem as any).webkitRequestFullscreen();
+      }
+
+      // Verrouille l'orientation à l'horizontale sur mobile si supporté par le navigateur
+      if (window.screen?.orientation && "lock" in window.screen.orientation) {
+        await (window.screen.orientation as any).lock("landscape").catch(() => {});
+      }
+    } catch (err) {
+      console.error("Erreur passage Plein Écran:", err);
+    }
+  };
+
+  // Gestion du double tap mobile (ou double-clic PC)
+  const handleDoubleTap = () => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300; // 300ms entre deux taps
+    if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+      handleFullscreenLandscape();
+    }
+    lastTapRef.current = now;
+  };
 
   if (loading) {
     return (
@@ -147,7 +181,7 @@ export default function MovieDetailPage() {
         </button>
       </div>
 
-      {/* Hero Banner : Masqué sur mobile si la lecture est en cours pour éviter l'encombrement */}
+      {/* Hero Banner */}
       <div className={`relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[200px] sm:min-h-[240px] flex items-end p-4 sm:p-6 ${isPlaying ? "hidden sm:flex" : "flex"}`}>
         {backdropUrl && (
           <div className="absolute inset-0 z-0">
@@ -198,24 +232,38 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
-      {/* Main Grid : Sur mobile, le lecteur prend 100% de la largeur */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {isPlaying && (
           <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
             <div className="flex items-center justify-between px-1">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-400 truncate max-w-[80%]">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-400 truncate max-w-[70%]">
                 {movieTitle}
               </h2>
-              <button
-                onClick={() => setIsPlaying(false)}
-                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
-                title="Fermer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleFullscreenLandscape}
+                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
+                  title="Plein Écran Horizontal"
+                >
+                  <Maximize className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setIsPlaying(false)}
+                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
+                  title="Fermer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
-            <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5">
+            {/* Zone de double-tap / double-clic */}
+            <div
+              ref={playerContainerRef}
+              onClick={handleDoubleTap}
+              className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5 cursor-pointer"
+            >
               <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
                 <VideoPlayer
                   key={streamId}
@@ -229,7 +277,7 @@ export default function MovieDetailPage() {
           </div>
         )}
 
-        {/* Sections Synopsis & Casting */}
+        {/* Synopsis & Casting */}
         <div className={isPlaying ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
           <div className="bg-[#12141c] border border-white/5 rounded-2xl p-4 sm:p-6 space-y-3">
             <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
