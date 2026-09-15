@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useUI } from "@/store/ui";
 
-const dictionaries = {
+const dictionaries: Record<string, any> = {
   fr: {
     Nav: {
       home: "Accueil",
@@ -21,6 +21,16 @@ const dictionaries = {
       connections: "Connexions",
       signOut: "Déconnexion",
       searchPlaceholder: "Rechercher un contenu...",
+    },
+    Home: {
+      heroTitle: "Que voulez-vous regarder ce soir ?",
+      welcomeBack: "BON RETOUR",
+      movies: "Films",
+      browseMovies: "Explorer le catalogue",
+      liveTv: "Live TV",
+      channelsEpg: "Chaînes & EPG",
+      myList: "Ma Liste",
+      savedLater: "Enregistrés pour plus tard",
     },
     Hero: {
       play: "Lecture",
@@ -47,6 +57,16 @@ const dictionaries = {
       signOut: "Sign out",
       searchPlaceholder: "Search everything…",
     },
+    Home: {
+      heroTitle: "What will you watch tonight?",
+      welcomeBack: "WELCOME BACK",
+      movies: "Movies",
+      browseMovies: "Browse the film library",
+      liveTv: "Live TV",
+      channelsEpg: "Channels & EPG",
+      myList: "My List",
+      savedLater: "Saved for later",
+    },
     Hero: {
       play: "Play",
       moreInfo: "More Info",
@@ -72,6 +92,16 @@ const dictionaries = {
       signOut: "تسجيل الخروج",
       searchPlaceholder: "ابحث عن أي شيء...",
     },
+    Home: {
+      heroTitle: "ماذا ستشاهد الليلة؟",
+      welcomeBack: "مرحباً بعودتك",
+      movies: "الأفلام",
+      browseMovies: "استكشف قائمة الأفلام",
+      liveTv: "البث المباشر",
+      channelsEpg: "القنوات و الدليل",
+      myList: "قائمتي",
+      savedLater: "محفوظة للمشاهدة لاحقاً",
+    },
     Hero: {
       play: "تشغيل",
       moreInfo: "تفاصيل",
@@ -86,7 +116,6 @@ export function useTranslation() {
   const dict = dictionaries[language] || dictionaries.fr;
 
   useEffect(() => {
-    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
     document.documentElement.lang = language;
   }, [language]);
 
