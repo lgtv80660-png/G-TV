@@ -1,13 +1,7 @@
-import dynamic from "next/dynamic";
+import ClientOnlyHome from "@/components/pages/ClientOnlyHome";
 
-export const dynamicMode = "force-dynamic";
-
-// Désactive le pré-rendu serveur pour le composant client IPTV
-const HomePageClient = dynamic(
-  () => import("@/components/pages/HomePageClient"),
-  { ssr: false }
-);
+export const dynamic = "force-dynamic";
 
 export default function Page() {
-  return <HomePageClient />;
+  return <ClientOnlyHome />;
 }
