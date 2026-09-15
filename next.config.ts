@@ -1,9 +1,30 @@
-import type { NextConfig } from "next";
+import cache from "@opennextjs/cloudflare/kvCache";
 
-const nextConfig: NextConfig = {
-  // Standalone output only inside Docker (set by the Dockerfile). Locally this
-  // stays undefined so `npm run dev` / `npm start` work normally.
-  output: process.env.STANDALONE_BUILD === "1" ? "standalone" : undefined,
+const config = {
+  default: {
+    override: {
+      wrapper: "cloudflare-node",
+      converter: "edge",
+      proxyExternalRequest: "fetch",
+      incrementalCache: "dummy",
+      tagCache: "dummy",
+      queue: "dummy",
+    },
+  },
+  edgeExternals: ["node:crypto"],
+  middleware: {
+    external: true,
+    override: {
+      wrapper: "cloudflare-edge",
+      converter: "edge",
+      proxyExternalRequest: "fetch",
+      incrementalCache: "dummy",
+      tagCache: "dummy",
+      queue: "dummy",
+    },
+  },
+  // Force le nom exact de ton Worker Cloudflare pour l'auto-binding
+  serviceName: "g-tv",
 };
 
-export default nextConfig;
+export default config;
