@@ -30,18 +30,27 @@ function EpisodeImage({
   const [imgSrc, setImgSrc] = useState<string | null>(ep.info?.movie_image || null);
 
   useEffect(() => {
-    // Si Xtream fournit une vraie image d'épisode, on la prend
+    // Si Xtream fournit déjà l'image de l'épisode, on l'utilise directement
     if (ep.info?.movie_image) {
       setImgSrc(ep.info.movie_image);
       return;
     }
 
     let isMounted = true;
-    const cleanSeason = seasonKey.replace(/\D/g, "") || "1";
 
-    // 1. Nettoyage poussé du titre de la série pour la recherche TMDB
+    // 1. Extraire le numéro de la saison (ex: "Saison 1" -> "1")
+    const seasonNumber = seasonKey.replace(/\D/g, "") || ep.season || "1";
+
+    // 2. Extraire le numéro de l'épisode (ep.episode_num ou depuis le nom ex: S01E03)
+    let episodeNumber = ep.episode_num;
+    if (!episodeNumber && ep.title) {
+      const match = ep.title.match(/E(\d+)/i);
+      if (match) episodeNumber = match[1];
+    }
+    episodeNumber = episodeNumber || "1";
+
+    // 3. Nettoyer uniquement le nom de la série pour la recherche TMDB
     let cleanTitle = seriesTitle || "";
-    // Enlève tout ce qui suit un point ou tiret avec S01E01, VOSTFR, 720p, etc.
     cleanTitle = cleanTitle
       .replace(/\./g, " ")
       .replace(/S\d+E\d+.*/i, "")
@@ -49,8 +58,9 @@ function EpisodeImage({
       .replace(/\(\d{4}\)/g, "")
       .trim();
 
+    // 4. Appel de l'API en envoyant spécifiquement la SAISON et l'ÉPISODE
     fetch(
-      `/api/tmdb?type=episode&id=${tmdbId || ""}&query=${encodeURIComponent(cleanTitle)}&season=${cleanSeason}&episode=${ep.episode_num}`
+      `/api/tmdb?type=episode&id=${tmdbId || ""}&query=${encodeURIComponent(cleanTitle)}&season=${seasonNumber}&episode=${episodeNumber}`
     )
       .then((res) => res.json())
       .then((data) => {
@@ -62,7 +72,6 @@ function EpisodeImage({
         } else if (data?.image) {
           setImgSrc(data.image);
         } else {
-          // Si TMDB ne trouve rien, on bascule sur la couverture de la série
           setImgSrc(fallbackCover || null);
         }
       })
@@ -75,7 +84,6 @@ function EpisodeImage({
     };
   }, [ep, seriesTitle, tmdbId, seasonKey, fallbackCover]);
 
-  // Si imgSrc est nul ou échoue, afficher directement l'image de secours (fallbackCover)
   const finalSrc = imgSrc || fallbackCover;
 
   if (!finalSrc) {
