@@ -2,20 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Tv, Film, MonitorPlay, Search, Heart, Radio } from "lucide-react";
+import { Home, Tv, Film, MonitorPlay, Search, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const NAV = [
-  { href: "/", label: "Home", icon: Home, exact: true },
-  { href: "/live", label: "Live TV", icon: Tv },
-  { href: "/movies", label: "Movies", icon: Film },
-  { href: "/series", label: "Series", icon: MonitorPlay },
-  { href: "/search", label: "Search", icon: Search },
-  { href: "/favourites", label: "My List", icon: Heart },
-];
+import { useTranslation } from "@/lib/useTranslation";
 
 export function Sidebar() {
   const path = usePathname();
+  const { t } = useTranslation();
+
+  const NAV = [
+    { href: "/", label: t("Nav.home"), icon: Home, exact: true },
+    { href: "/live", label: t("Nav.live"), icon: Tv },
+    { href: "/movies", label: t("Nav.movies"), icon: Film },
+    { href: "/series", label: t("Nav.series"), icon: MonitorPlay },
+    { href: "/search", label: t("Nav.search"), icon: Search },
+    { href: "/favourites", label: t("Nav.myList"), icon: Heart },
+  ];
+
   return (
     <aside className="sticky top-0 z-30 hidden h-dvh w-[84px] shrink-0 flex-col items-center gap-1 border-r border-white/8 bg-ink-950/40 py-6 backdrop-blur-2xl lg:flex">
       <Link href="/" className="mb-6 flex flex-col items-center gap-1">
@@ -52,12 +55,21 @@ export function Sidebar() {
   );
 }
 
-/** Mobile bottom nav. */
 export function MobileNav() {
   const path = usePathname();
+  const { t } = useTranslation();
+
+  const NAV = [
+    { href: "/", label: t("Nav.home"), icon: Home, exact: true },
+    { href: "/live", label: t("Nav.live"), icon: Tv },
+    { href: "/movies", label: t("Nav.movies"), icon: Film },
+    { href: "/series", label: t("Nav.series"), icon: MonitorPlay },
+    { href: "/search", label: t("Nav.search"), icon: Search },
+  ];
+
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-around border-t border-white/5 bg-ink-950/85 px-2 py-2 backdrop-blur-xl lg:hidden">
-      {NAV.slice(0, 5).map(({ href, label, icon: Icon, exact }) => {
+      {NAV.map(({ href, label, icon: Icon, exact }) => {
         const active = exact ? path === href : path === href || path.startsWith(href + "/");
         return (
           <Link
