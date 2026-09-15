@@ -11,7 +11,7 @@ export function LanguagePicker() {
     <div className="relative flex items-center gap-1.5 rounded-full border border-white/10 bg-ink-850/80 px-3 py-1.5 text-xs text-fog-200 transition-colors hover:border-iris-400/50">
       <Globe className="h-4 w-4 shrink-0 text-iris-400" />
       <select
-        value={language}
+        value={language || "fr"}
         onChange={(e) => setLanguage(e.target.value as Language)}
         className="bg-transparent font-medium text-foreground focus:outline-none cursor-pointer"
       >
