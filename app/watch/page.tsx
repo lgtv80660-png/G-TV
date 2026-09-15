@@ -97,7 +97,8 @@ function WatchInner() {
     (position: number, duration: number, playerPoster?: string) => {
       if (isLive || !duration) return;
       const now = Date.now();
-      if (now - lastSave.current < 5000) return;
+      // Réduit à 2 secondes pour garantir une écriture rapide
+      if (now - lastSave.current < 2000) return;
       lastSave.current = now;
 
       const finalPoster = playerPoster || poster;
