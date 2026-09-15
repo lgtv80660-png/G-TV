@@ -77,9 +77,10 @@ export default function LiveTvPage() {
         </div>
       </div>
 
-      {/* Disposition 3 Colonnes Web */}
+      {/* Grid 3 Colonnes Web */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-        {/* Catégories (Web) */}
+        
+        {/* Colonne 1 : Catégories (Web) */}
         <div className="hidden md:flex md:col-span-4 lg:col-span-3 bg-[#12141c] border border-white/5 rounded-2xl p-4 flex-col gap-1.5 h-[calc(100vh-140px)] overflow-y-auto">
           <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2">
             Catégories
@@ -112,7 +113,7 @@ export default function LiveTvPage() {
           })}
         </div>
 
-        {/* Chaînes */}
+        {/* Colonne 2 : Chaînes */}
         <div className="col-span-1 md:col-span-4 lg:col-span-4 bg-[#12141c] border border-white/5 rounded-2xl p-4 space-y-3 h-[380px] md:h-[calc(100vh-140px)] overflow-y-auto flex flex-col">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
@@ -157,22 +158,20 @@ export default function LiveTvPage() {
           </div>
         </div>
 
-        {/* Lecteur Live TV - Alignement et dimensions strictes */}
+        {/* Colonne 3 : Lecteur Live TV (Structure originale directe) */}
         <div className="col-span-1 md:col-span-4 lg:col-span-5 space-y-3 bg-[#12141c] border border-white/5 rounded-2xl p-4 sticky top-4">
           {selectedChannel ? (
             <>
-              <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5 flex items-center justify-center">
-                <div className="w-full h-full">
-                  <VideoPlayer
-                    key={selectedChannel.stream_id}
-                    sources={[
-                      `/api/stream?type=live&id=${selectedChannel.stream_id}&ext=ts`,
-                    ]}
-                    ext="ts"
-                    isLive={true}
-                    title={selectedChannel.name}
-                  />
-                </div>
+              <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5">
+                <VideoPlayer
+                  key={selectedChannel.stream_id}
+                  sources={[
+                    `/api/stream?type=live&id=${selectedChannel.stream_id}&ext=ts`,
+                  ]}
+                  ext="ts"
+                  isLive={true}
+                  title={selectedChannel.name}
+                />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-white">
@@ -189,6 +188,7 @@ export default function LiveTvPage() {
             </div>
           )}
         </div>
+
       </div>
     </div>
   );
