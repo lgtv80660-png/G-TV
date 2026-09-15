@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Play, Star, Calendar, Clock, ArrowLeft, Heart, X, User, Film, Info, Maximize } from "lucide-react";
+import { Play, Star, Calendar, Clock, X, User, Info, Maximize } from "lucide-react";
 import { DetailHero } from "@/components/catalog/DetailHero";
 import { SmartImage } from "@/components/ui/SmartImage";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -13,7 +13,55 @@ import { useLibrary } from "@/store/library";
 import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
 import type { Episode } from "@/lib/xtream/types";
 
-// Carte d'acteur interactive 3D Flip
+// Composant pour charger l'image d'épisode (Xtream -> TMDB -> Fallback Cover)
+function EpisodeImage({
+  ep,
+  seriesTitle,
+  tmdbId,
+  seasonKey,
+  fallbackCover,
+}: {
+  ep: any;
+  seriesTitle: string;
+  tmdbId?: string | number;
+  seasonKey: string;
+  fallbackCover?: string;
+}) {
+  const [imgSrc, setImgSrc] = useState<string | null>(ep.info?.movie_image || null);
+
+  useEffect(() => {
+    if (ep.info?.movie_image) return;
+
+    let isMounted = true;
+    const cleanSeason = seasonKey.replace(/\D/g, "") || "1";
+
+    fetch(
+      `/api/episode-image?tmdbId=${tmdbId || ""}&show=${encodeURIComponent(seriesTitle)}&season=${cleanSeason}&episode=${ep.episode_num}`
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted && data?.imageUrl) {
+          setImgSrc(data.imageUrl);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [ep, seriesTitle, tmdbId, seasonKey]);
+
+  return (
+    <SmartImage
+      src={imgSrc || fallbackCover}
+      alt={ep.title || "Episode"}
+      rounded="rounded-lg"
+      className="h-full w-full object-cover"
+    />
+  );
+}
+
+// Carte d'acteur 3D Flip
 const FlipActorCard = ({ name }: { name: string }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
@@ -185,7 +233,6 @@ export default function SeriesDetailPage() {
             </p>
           )}
 
-          {/* Casting sans scroll horizontal forcé (Flex wrap pour utiliser l'espace au max) */}
           {castList.length > 0 && (
             <div className="pt-3 border-t border-white/10 space-y-2">
               <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
@@ -200,7 +247,6 @@ export default function SeriesDetailPage() {
           )}
         </div>
 
-        {/* Barre des saisons au-dessus de la zone des épisodes */}
         {seasons.length > 0 && (
           <div className="mt-8 no-scrollbar flex gap-2 overflow-x-auto pb-2 border-b border-white/5">
             {seasons.map((s) => {
@@ -224,10 +270,7 @@ export default function SeriesDetailPage() {
           </div>
         )}
 
-        {/* Grille : Lecteur d'aperçu aligné EN FACE des épisodes */}
         <div className="mt-4 flex flex-col lg:flex-row gap-6 items-start">
-          
-          {/* Lecteur d'aperçu à gauche */}
           {activeEpisode && (
             <div className="w-full lg:w-1/2 shrink-0 space-y-3 bg-ink-900 border border-white/10 rounded-2xl p-4 sticky top-6 shadow-2xl z-30">
               <div className="flex items-center justify-between px-1">
@@ -274,7 +317,6 @@ export default function SeriesDetailPage() {
             </div>
           )}
 
-          {/* Liste des Épisodes */}
           <div className="flex-1 w-full space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
             {episodes.map((ep: Episode) => {
               const isSelected = activeEpisode?.id === ep.id;
@@ -294,7 +336,13 @@ export default function SeriesDetailPage() {
                   )}
                 >
                   <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-ink-900 sm:w-36">
-                    <SmartImage src={ep.info?.movie_image} alt={epTitle} rounded="rounded-lg" className="h-full w-full" />
+                    <EpisodeImage
+                      ep={ep}
+                      seriesTitle={cleanName(title)}
+                      tmdbId={info?.tmdb_id}
+                      seasonKey={activeSeasonKey || "1"}
+                      fallbackCover={info?.cover || info?.backdrop}
+                    />
                     <span className="absolute inset-0 grid place-items-center bg-ink-950/30 opacity-0 transition-opacity group-hover:opacity-100">
                       <span className="grid h-8 w-8 place-items-center rounded-full bg-iris-400 text-ink-950">
                         <Play className="h-3.5 w-3.5 translate-x-0.5 fill-ink-950" />
@@ -328,7 +376,6 @@ export default function SeriesDetailPage() {
             })}
             {episodes.length === 0 && <p className="text-sm text-fog-500">Aucun épisode répertorié pour cette saison.</p>}
           </div>
-
         </div>
       </DetailHero>
     </div>
