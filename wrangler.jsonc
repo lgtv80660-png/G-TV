@@ -1,10 +1,12 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "g-tv",
-  "main": ".open-next/worker.js",
-  "compatibility_date": "2026-09-11",
-  "assets": {
-    "directory": ".open-next/assets",
-    "binding": "ASSETS"
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "opennextjs-cloudflare build",
+    "start": "next start",
+    "lint": "next lint",
+    "deploy": "opennextjs-cloudflare deploy",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview"
   }
 }
