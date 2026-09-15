@@ -2,7 +2,7 @@
 
 import { TopBar } from "@/components/layout/TopBar";
 import { FeaturedTile, NavTile, ContinueTile } from "@/components/catalog/Bento";
-import { useVodStreams, useSeries } from "@/lib/hooks";
+import { useVodStreams } from "@/lib/hooks";
 import { useLibrary } from "@/store/library";
 import { useTranslation } from "@/lib/useTranslation";
 
