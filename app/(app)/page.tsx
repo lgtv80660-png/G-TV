@@ -57,7 +57,7 @@ export default function HomePage() {
 
   return (
     <>
-      <TopBar title="Lumen" />
+      <TopBar title="G-Player" />
 
       <div className="space-y-8 px-5 pt-6 sm:px-8">
         <KineticTitle eyebrow={t("Home.welcomeBack")} text={t("Home.heroTitle")} />
