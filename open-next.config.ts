@@ -1,6 +1,4 @@
-import { defineVersionConfig } from "@opennextjs/cloudflare";
-
-export default defineVersionConfig({
+const config = {
   default: {
     override: {
       wrapper: "cloudflare-node",
@@ -11,6 +9,7 @@ export default defineVersionConfig({
       queue: "dummy",
     },
   },
+  edgeExternals: ["node:crypto"],
   middleware: {
     external: true,
     override: {
@@ -22,4 +21,6 @@ export default defineVersionConfig({
       queue: "dummy",
     },
   },
-});
+};
+
+export default config;
