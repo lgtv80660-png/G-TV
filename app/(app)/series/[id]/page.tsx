@@ -13,7 +13,7 @@ import { useLibrary } from "@/store/library";
 import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
 import type { Episode } from "@/lib/xtream/types";
 
-// Composant de carte d'acteur avec effet Flip 3D
+// Carte d'acteur interactive 3D Flip
 const FlipActorCard = ({ name }: { name: string }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
@@ -47,7 +47,7 @@ const FlipActorCard = ({ name }: { name: string }) => {
           setIsFlipped(!isFlipped);
         }
       }}
-      className="group perspective w-32 sm:w-36 h-48 sm:h-52 flex-shrink-0 cursor-pointer select-none focus:outline-none"
+      className="group perspective w-28 sm:w-32 h-40 sm:h-44 flex-shrink-0 cursor-pointer select-none focus:outline-none"
     >
       <div
         className={`relative w-full h-full rounded-2xl transition-transform duration-500 transform-style-3d ${
@@ -59,22 +59,22 @@ const FlipActorCard = ({ name }: { name: string }) => {
             <img src={photoUrl} alt={name} className="absolute inset-0 w-full h-full object-cover" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center bg-indigo-950/40 text-indigo-400">
-              <User className="w-10 h-10" />
+              <User className="w-8 h-8" />
             </div>
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-          <div className="relative z-10 p-2.5 flex items-center justify-between">
-            <span className="text-xs font-bold text-white line-clamp-1">{name}</span>
-            <Info className="w-3.5 h-3.5 text-indigo-400 opacity-70 flex-shrink-0" />
+          <div className="relative z-10 p-2 flex items-center justify-between">
+            <span className="text-[11px] font-bold text-white line-clamp-1">{name}</span>
+            <Info className="w-3 h-3 text-indigo-400 opacity-70 flex-shrink-0" />
           </div>
         </div>
 
-        <div className="absolute inset-0 w-full h-full rounded-2xl p-3 bg-gradient-to-br from-indigo-950 to-[#12141c] border border-indigo-500/40 text-white backface-hidden rotate-y-180 flex flex-col justify-between shadow-xl">
+        <div className="absolute inset-0 w-full h-full rounded-2xl p-2.5 bg-gradient-to-br from-indigo-950 to-[#12141c] border border-indigo-500/40 text-white backface-hidden rotate-y-180 flex flex-col justify-between shadow-xl">
           <div className="space-y-1 overflow-hidden">
-            <p className="text-[11px] font-bold text-indigo-300 line-clamp-1">{name}</p>
-            <p className="text-[10px] text-zinc-300 leading-snug line-clamp-5">{bio}</p>
+            <p className="text-[10px] font-bold text-indigo-300 line-clamp-1">{name}</p>
+            <p className="text-[9px] text-zinc-300 leading-snug line-clamp-4">{bio}</p>
           </div>
-          <span className="text-[9px] text-zinc-500 italic self-end">Retourner</span>
+          <span className="text-[8px] text-zinc-500 italic self-end">Retourner</span>
         </div>
       </div>
     </div>
@@ -92,11 +92,9 @@ export default function SeriesDetailPage() {
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
 
-  // Normalisation des métadonnées (info vs series_info vs racine)
   const info = data?.info || data?.series_info || (data && !data.episodes ? data : {}) || {};
   const episodesBySeason = data?.episodes ?? {};
 
-  // Tri sécurisé des saisons
   const seasons = useMemo(() => {
     if (!episodesBySeason) return [];
     return Object.keys(episodesBySeason)
@@ -179,17 +177,31 @@ export default function SeriesDetailPage() {
         </div>
 
         {(info?.plot || info?.description) && (
-          <p className="mt-5 max-w-3xl text-sm leading-relaxed text-fog-300 font-light">
+          <p className="mt-4 max-w-3xl text-sm leading-relaxed text-fog-300 font-light">
             {info.plot || info.description}
           </p>
         )}
 
-        {/* Disposition Grille : Aperçu Vidéo + Saisons / Épisodes / Casting */}
-        <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Casting placé DIRECTEMENT sous le synopsis dans la zone supérieure */}
+        {castList.length > 0 && (
+          <div className="mt-6 pt-4 border-t border-white/10 space-y-2.5 max-w-4xl">
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <User className="w-3.5 h-3.5 text-iris-400" /> Casting / Acteurs
+            </h3>
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-iris-500 scrollbar-track-transparent">
+              {castList.map((actor: string, idx: number) => (
+                <FlipActorCard key={idx} name={actor} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Zone de lecture & Liste des épisodes (Alignement parfait en haut) */}
+        <div className="mt-8 flex flex-col lg:flex-row gap-6 items-start">
           
-          {/* Lecteur d'Aperçu en Colonne de Gauche */}
+          {/* Lecteur d'Aperçu (Aligné exactement sur le sommet de la colonne de droite) */}
           {activeEpisode && (
-            <div className="lg:col-span-5 space-y-3 bg-ink-900 border border-white/10 rounded-2xl p-4 sticky top-6 shadow-2xl z-30">
+            <div className="w-full lg:w-1/2 shrink-0 space-y-3 bg-ink-900 border border-white/10 rounded-2xl p-4 sticky top-6 shadow-2xl z-30">
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-xs font-bold uppercase tracking-wider text-iris-400 truncate max-w-[70%]">
                   S{activeEpisode.season || activeSeasonKey}E{activeEpisode.episode_num} - {cleanName(activeEpisode.title || "")}
@@ -234,10 +246,10 @@ export default function SeriesDetailPage() {
             </div>
           )}
 
-          {/* Saisons, Épisodes & Acteurs */}
-          <div className={activeEpisode ? "lg:col-span-7 space-y-6" : "lg:col-span-12 space-y-6"}>
+          {/* Saisons & Épisodes */}
+          <div className="flex-1 w-full space-y-4">
             
-            {/* Sélecteur de Saison */}
+            {/* Onglets des Saisons */}
             {seasons.length > 0 && (
               <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
                 {seasons.map((s) => {
@@ -262,7 +274,7 @@ export default function SeriesDetailPage() {
             )}
 
             {/* Liste des Épisodes */}
-            <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
+            <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
               {episodes.map((ep: Episode) => {
                 const isSelected = activeEpisode?.id === ep.id;
                 const ext = ep.container_extension || "mp4";
@@ -315,28 +327,6 @@ export default function SeriesDetailPage() {
               })}
               {episodes.length === 0 && <p className="text-sm text-fog-500">Aucun épisode répertorié pour cette saison.</p>}
             </div>
-
-            {/* Section Casting / Acteurs */}
-            {castList.length > 0 && (
-              <div className="pt-4 border-t border-white/10 space-y-3">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <User className="w-4 h-4 text-iris-400" /> Casting / Acteurs
-                </h3>
-                <div className="flex gap-3 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-iris-500 scrollbar-track-transparent">
-                  {castList.map((actor: string, idx: number) => (
-                    <FlipActorCard key={idx} name={actor} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Réalisateur / Directeur */}
-            {info?.director && (
-              <div className="pt-3 border-t border-white/10 text-xs text-fog-400">
-                <span className="text-fog-500 font-semibold">Réalisateur : </span>
-                <span className="text-fog-200">{info.director}</span>
-              </div>
-            )}
 
           </div>
 
