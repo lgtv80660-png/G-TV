@@ -182,13 +182,21 @@ export function LiveBrowser() {
                   activeChannel?.stream_id === c.stream_id ? "bg-ink-800" : "hover:bg-ink-850"
                 )}
               >
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ink-950 overflow-hidden">
-                  {c.stream_icon ? (
-                    <SmartImage src={c.stream_icon} alt={c.name} className="h-10 w-10" />
-                  ) : (
-                    <Tv className="h-5 w-5 text-fog-600" />
-                  )}
-                </div>
+<div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ink-950 overflow-hidden border border-white/5">
+  {c.stream_icon ? (
+    <img
+      src={c.stream_icon.startsWith("http://") ? `/api/image-proxy?url=${encodeURIComponent(c.stream_icon)}` : c.stream_icon}
+      alt={c.name}
+      className="h-full w-full object-contain p-1"
+      onError={(e) => {
+        // En cas d'erreur de chargement, remplace par l'icône TV
+        (e.target as HTMLElement).style.display = "none";
+        (e.target as HTMLElement).nextElementSibling?.classList.remove("hidden");
+      }}
+    />
+  ) : null}
+  <Tv className={`h-5 w-5 text-fog-600 ${c.stream_icon ? "hidden" : ""}`} />
+</div>
                 <span className="truncate text-sm font-medium text-fog-200 flex-1">{cleanName(c.name)}</span>
               </button>
             ))
