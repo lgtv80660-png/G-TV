@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { streamSrc, resolveSrc, transcodeSrc, freeTvSrc, api } from "@/lib/api";
+import { streamSrc, resolveSrc, transcodeSrc, api } from "@/lib/api";
 import { useSeriesInfo } from "@/lib/hooks";
 import { useLibrary } from "@/store/library";
 import { parseDurationToSeconds } from "@/lib/utils";
@@ -16,15 +16,14 @@ function WatchInner() {
   const router = useRouter();
   const { saveProgress, pushRecentLive } = useLibrary();
 
-  const type = (params.get("type") as StreamKind | "freetv") || "movie";
+  const type = (params.get("type") as StreamKind) || "movie";
   const id = params.get("id") || "";
   const ext = params.get("ext") || (type === "live" ? "ts" : "mp4");
   const title = params.get("title") || "Now Playing";
   const urlPoster = params.get("poster") || params.get("cover") || undefined;
   const resume = Number(params.get("resume") || 0);
   const seriesId = params.get("series") || undefined;
-  const freeUrl = params.get("url") || "";
-  const isLive = type === "live" || type === "freetv";
+  const isLive = type === "live";
 
   const { data: seriesInfo } = useSeriesInfo(type === "series" ? seriesId : undefined);
   const flatEpisodes = useMemo<Episode[]>(() => {
@@ -69,7 +68,7 @@ function WatchInner() {
     return 0;
   }, [type, id, movieInfo, flatEpisodes]);
 
-  const mediaKind = (type === "freetv" ? "live" : type) as StreamKind;
+  const mediaKind = type as StreamKind;
 
   const { data: resolved, isLoading: resolving } = useQuery({
     queryKey: ["resolve", type, id, ext],
@@ -79,12 +78,11 @@ function WatchInner() {
   });
 
   const sources = useMemo(() => {
-    if (type === "freetv") return freeUrl ? [freeTvSrc(freeUrl)] : [];
     const proxy = streamSrc(mediaKind, id, ext);
     if (isLive) return [`/api/hls?id=${id}`, proxy];
     const transcode = transcodeSrc(mediaKind, id, ext);
     return [...(resolved?.directOk && resolved.url ? [resolved.url] : []), proxy, transcode];
-  }, [isLive, type, mediaKind, id, ext, freeUrl, resolved]);
+  }, [isLive, mediaKind, id, ext, resolved]);
 
   const recentedRef = useRef(false);
   if (type === "live" && !recentedRef.current && id) {
@@ -97,7 +95,6 @@ function WatchInner() {
     (position: number, duration: number, playerPoster?: string) => {
       if (isLive || !duration) return;
       const now = Date.now();
-      // Réduit à 2 secondes pour garantir une écriture rapide
       if (now - lastSave.current < 2000) return;
       lastSave.current = now;
 
@@ -127,7 +124,7 @@ function WatchInner() {
     );
   }, [nextEp, seriesId, title, router]);
 
-  if (!id && !freeUrl) {
+  if (!id) {
     return (
       <div className="grid h-dvh place-items-center text-fog-500">
         Nothing to play. <button onClick={() => router.back()} className="ml-2 underline">Go back</button>
