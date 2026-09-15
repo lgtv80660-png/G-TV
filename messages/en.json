@@ -1,0 +1,25 @@
+{
+  "Nav": {
+    "home": "Home",
+    "live": "Live TV",
+    "movies": "Movies",
+    "series": "Series",
+    "search": "Search",
+    "myList": "My List"
+  },
+  "TopBar": {
+    "account": "Account",
+    "user": "User",
+    "status": "Status",
+    "expires": "Expires",
+    "connections": "Connections",
+    "signOut": "Sign out",
+    "searchPlaceholder": "Search everything…"
+  },
+  "Hero": {
+    "play": "Play",
+    "moreInfo": "More Info",
+    "featured": "Featured",
+    "continueWatching": "Continue Watching"
+  }
+}

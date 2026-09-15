@@ -124,7 +124,3 @@ export async function resolveSrc(
     return { url: null, directOk: false };
   }
 }
-
-// Exportations explicites pour la page Séries
-export const fetchSeries = (categoryId?: string) => api.series(categoryId);
-export const fetchSeriesCategories = () => api.seriesCategories();

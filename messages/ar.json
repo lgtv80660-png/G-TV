@@ -1,0 +1,25 @@
+{
+  "Nav": {
+    "home": "الرئيسية",
+    "live": "البث المباشر",
+    "movies": "الأفلام",
+    "series": "المسلسلات",
+    "search": "بحث",
+    "myList": "قائمتي"
+  },
+  "TopBar": {
+    "account": "الحساب",
+    "user": "المستخدم",
+    "status": "الحالة",
+    "expires": "تاريخ الانتهاء",
+    "connections": "الاتصالات",
+    "signOut": "تسجيل الخروج",
+    "searchPlaceholder": "ابحث عن أي شيء..."
+  },
+  "Hero": {
+    "play": "تشغيل",
+    "moreInfo": "تفاصيل",
+    "featured": "مميز",
+    "continueWatching": "متابعة المشاهدة"
+  }
+}

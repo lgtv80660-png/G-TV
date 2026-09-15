@@ -1,0 +1,25 @@
+{
+  "Nav": {
+    "home": "Accueil",
+    "live": "Live TV",
+    "movies": "Films",
+    "series": "Séries",
+    "search": "Recherche",
+    "myList": "Ma Liste"
+  },
+  "TopBar": {
+    "account": "Compte",
+    "user": "Utilisateur",
+    "status": "Statut",
+    "expires": "Expire le",
+    "connections": "Connexions",
+    "signOut": "Déconnexion",
+    "searchPlaceholder": "Rechercher un contenu..."
+  },
+  "Hero": {
+    "play": "Lecture",
+    "moreInfo": "Plus d'infos",
+    "featured": "À l'affiche",
+    "continueWatching": "Reprendre la lecture"
+  }
+}
