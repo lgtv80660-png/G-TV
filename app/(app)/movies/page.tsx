@@ -2,48 +2,29 @@
 
 import { TopBar } from "@/components/layout/TopBar";
 import { CatalogBrowser } from "@/components/catalog/CatalogBrowser";
-import { api } from "@/lib/api";
-import { useEffect, useState } from "react";
-import { Category, VodStream } from "@/lib/xtream/types";
+import { useVodCategories, useVodStreams } from "@/lib/hooks";
+import type { VodStream } from "@/lib/xtream/types";
 
 export default function MoviesPage() {
-  const [cats, setCats] = useState<Category[]>([]);
-  const [items, setItems] = useState<VodStream[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function loadData() {
-      try {
-        setLoading(true);
-        const [categoriesData, streamsData] = await Promise.all([
-          api.vodCategories(),
-          api.vodStreams(),
-        ]);
-        if (isMounted) {
-          setCats(categoriesData || []);
-          setItems(streamsData || []);
-        }
-      } catch (error) {
-        console.error("Erreur lors du chargement des films:", error);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    }
-    loadData();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const { data: categories = [] } = useVodCategories();
 
   return (
     <>
       <TopBar title="Movies" />
-      <CatalogBrowser
-        items={items}
-        categories={cats}
-        type="movies"
-        loading={loading}
+      <CatalogBrowser<VodStream>
+        sectionKey="movies"
+        categories={categories}
+        useItems={(catId) => useVodStreams(catId)}
+        toPoster={(item) => ({
+          id: item.stream_id,
+          name: item.name,
+          poster: item.stream_icon,
+          rating: item.rating,
+          year: item.added,
+        })}
+        hrefFor={(item) =>
+          `/watch?type=movie&id=${item.stream_id}&ext=${item.container_extension || "mp4"}&title=${encodeURIComponent(item.name)}`
+        }
       />
     </>
   );
