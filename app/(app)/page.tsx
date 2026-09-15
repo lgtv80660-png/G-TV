@@ -1,131 +1,156 @@
 "use client";
 
+import { useMemo } from "react";
 import { TopBar } from "@/components/layout/TopBar";
+import { KineticTitle } from "@/components/ui/KineticTitle";
 import { FeaturedTile, NavTile, ContinueTile } from "@/components/catalog/Bento";
+import { type HeroItem } from "@/components/catalog/Hero";
+import { Shelf } from "@/components/catalog/Shelf";
 import { PosterCard } from "@/components/catalog/PosterCard";
-import { useVodStreams, useSeriesList } from "@/lib/hooks";
-import { useLibrary } from "@/store/library";
+import { PosterSkeletonRow, Skeleton } from "@/components/ui/Skeleton";
+import { useVodCategories, useSeriesCategories, useVodStreams, useSeriesList } from "@/lib/hooks";
+import { useLibrary, continueWatching } from "@/store/library";
+import { sortItems, yearFrom, ratingNum } from "@/lib/utils";
 import { useTranslation } from "@/lib/useTranslation";
+
+const CARD = "w-[140px] shrink-0 sm:w-[165px]";
 
 export default function HomePage() {
   const { t } = useTranslation();
-  const { data: movies = [], isLoading: loadingMovies } = useVodStreams();
-  const { data: series = [], isLoading: loadingSeries } = useSeriesList();
-  const library = useLibrary();
+  const vodCats = useVodCategories();
+  const seriesCats = useSeriesCategories();
+  const { progress } = useLibrary();
+  const cw = useMemo(() => continueWatching(progress), [progress]);
 
-  const progressList = Array.isArray(library.progress)
-    ? library.progress
-    : Object.values(library.progress ?? {});
+  const heroCatId = seriesCats.data?.[0]?.category_id;
+  const heroSeries = useSeriesList(heroCatId);
 
-  const heroItems = movies.slice(0, 5).map((m) => ({
-    id: String(m.stream_id),
-    title: m.name,
-    backdrop: m.stream_icon,
-    rating: typeof m.rating === "number" ? m.rating : parseFloat(m.rating) || 0,
-    year: m.added ? String(m.added) : undefined,
-    detailHref: `/movies/${m.stream_id}`,
-    playHref: `/movies/${m.stream_id}`,
-  }));
+  const heroItems: HeroItem[] = useMemo(() => {
+    const withArt = (heroSeries.data ?? []).filter((s) => s.backdrop_path?.length || s.cover);
+    return sortItems(withArt, "rating")
+      .slice(0, 6)
+      .map((s) => ({
+        id: `s-${s.series_id}`,
+        title: s.name,
+        backdrop: s.backdrop_path?.[0] || s.cover,
+        plot: s.plot,
+        rating: ratingNum(s.rating) || undefined,
+        year: yearFrom(s.releaseDate, s.release_date, s.name),
+        meta: s.genre,
+        detailHref: `/series/${s.series_id}`,
+        playHref: `/series/${s.series_id}`,
+      }));
+  }, [heroSeries.data]);
 
-  // Groupement par catégories ou sélection de récents
-  const recentMovies = movies.slice(0, 10);
-  const recentSeries = series.slice(0, 10);
+  const shelves = useMemo(() => {
+    const m = (vodCats.data ?? []).slice(0, 6).map((c) => ({ kind: "movie" as const, cat: c }));
+    const s = (seriesCats.data ?? []).slice(0, 5).map((c) => ({ kind: "series" as const, cat: c }));
+    const out: Array<{ kind: "movie" | "series"; cat: { category_id: string; category_name: string } }> = [];
+    for (let i = 0; i < Math.max(m.length, s.length); i++) {
+      if (m[i]) out.push(m[i]);
+      if (s[i]) out.push(s[i]);
+    }
+    return out;
+  }, [vodCats.data, seriesCats.data]);
+
+  const heroLoading = seriesCats.isLoading || heroSeries.isLoading;
 
   return (
     <>
-      <TopBar title={t("Nav.home")} />
-      <main className="p-4 md:p-6 space-y-8 max-w-[1600px] mx-auto pb-16">
-        <h1 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
-          {t("Home.heroTitle")}
-        </h1>
+      <TopBar title="Lumen" />
 
-        {/* Section Bento Du Haut */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-          <FeaturedTile items={heroItems} className="col-span-1 md:col-span-8 min-h-[380px]" />
+      <div className="space-y-8 px-5 pt-6 sm:px-8">
+        <KineticTitle eyebrow={t("Home.welcomeBack")} text={t("Home.heroTitle")} />
 
-          <div className="col-span-1 md:col-span-4 grid grid-cols-2 gap-4">
-            {progressList.length > 0 ? (
-              <ContinueTile items={progressList} className="col-span-2 min-h-[180px]" />
-            ) : (
-              <NavTile
-                href="/movies"
-                title={t("Home.movies")}
-                subtitle={t("Home.browseMovies")}
-                icon="film"
-                tint="iris"
-                className="col-span-2 min-h-[180px]"
-              />
-            )}
+        {/* bento mosaic */}
+        <div className="grid auto-rows-[168px] grid-cols-2 gap-4 lg:grid-cols-6">
+          {heroLoading ? (
+            <Skeleton className="col-span-2 row-span-2 rounded-3xl lg:col-span-4" />
+          ) : (
+            <FeaturedTile items={heroItems} className="col-span-2 row-span-2 lg:col-span-4" />
+          )}
 
+          {cw.length > 0 ? (
+            <ContinueTile items={cw} className="col-span-2 row-span-1 lg:col-span-2" />
+          ) : (
             <NavTile
-              href="/live"
-              title={t("Home.liveTv")}
-              subtitle={t("Home.channelsEpg")}
-              icon="live"
-              tint="mint"
-              className="col-span-1 min-h-[140px]"
-            />
-            <NavTile
-              href="/favourites"
-              title={t("Home.myList")}
-              subtitle={t("Home.savedLater")}
-              icon="heart"
+              href="/movies"
+              title={t("Home.movies")}
+              subtitle={t("Home.browseMovies")}
+              icon="film"
               tint="iris"
-              className="col-span-1 min-h-[140px]"
+              className="col-span-2 row-span-1 lg:col-span-2"
             />
-          </div>
+          )}
+
+          <NavTile href="/live" title={t("Home.liveTv")} subtitle={t("Home.channelsEpg")} icon="live" tint="mint" className="col-span-1 row-span-1" />
+          <NavTile href="/favourites" title={t("Home.myList")} subtitle={t("Home.savedLater")} icon="heart" tint="iris" className="col-span-1 row-span-1" />
         </div>
+      </div>
 
-        {/* Carrousel 1: Films Récents */}
-        {!loadingMovies && recentMovies.length > 0 && (
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-fog-400 tracking-wide uppercase">
-              [VOD] Films Récents
-            </h2>
-            <div className="flex gap-4 overflow-x-auto pb-4 pt-1 scrollbar-none">
-              {recentMovies.map((m) => (
-                <div key={m.stream_id} className="w-36 sm:w-44 shrink-0">
-                  <PosterCard
-                    item={{
-                      id: m.stream_id,
-                      name: m.name,
-                      poster: m.stream_icon,
-                      rating: m.rating,
-                      year: m.added ? String(m.added) : undefined,
-                    }}
-                    href={`/movies/${m.stream_id}`}
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
+      {/* browse — full bleed, shelves self-pad */}
+      <div className="space-y-9 py-10">
+        {(vodCats.isLoading || seriesCats.isLoading) && (
+          <>
+            <ShelfSkeleton />
+            <ShelfSkeleton />
+          </>
         )}
-
-        {/* Carrousel 2: Séries Récentes */}
-        {!loadingSeries && recentSeries.length > 0 && (
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-fog-400 tracking-wide uppercase">
-              [SÉRIES] Nouveautés
-            </h2>
-            <div className="flex gap-4 overflow-x-auto pb-4 pt-1 scrollbar-none">
-              {recentSeries.map((s) => (
-                <div key={s.series_id} className="w-36 sm:w-44 shrink-0">
-                  <PosterCard
-                    item={{
-                      id: s.series_id,
-                      name: s.name,
-                      poster: s.cover,
-                      rating: s.rating,
-                      year: s.releaseDate,
-                    }}
-                    href={`/series/${s.series_id}`}
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-      </main>
+        {shelves.map(({ kind, cat }) => (
+          <CategoryShelf key={`${kind}-${cat.category_id}`} kind={kind} catId={cat.category_id} title={cat.category_name} />
+        ))}
+      </div>
     </>
+  );
+}
+
+function CategoryShelf({ kind, catId, title }: { kind: "movie" | "series"; catId: string; title: string }) {
+  const movies = useVodStreams(kind === "movie" ? catId : undefined, kind === "movie");
+  const series = useSeriesList(kind === "series" ? catId : undefined, kind === "series");
+  const q = kind === "movie" ? movies : series;
+
+  if (q.isLoading) return <ShelfSkeleton title={title} />;
+
+  if (kind === "movie") {
+    const items = sortItems(movies.data ?? [], "added").slice(0, 20);
+    if (items.length === 0) return null;
+    return (
+      <Shelf title={title}>
+        {items.map((m) => (
+          <PosterCard
+            key={m.stream_id}
+            className={CARD}
+            item={{ id: m.stream_id, name: m.name, poster: m.stream_icon, rating: m.rating, year: yearFrom(m.name) }}
+            href={`/movies/${m.stream_id}`}
+          />
+        ))}
+      </Shelf>
+    );
+  }
+
+  const items = sortItems(series.data ?? [], "added").slice(0, 20);
+  if (items.length === 0) return null;
+  return (
+    <Shelf title={title}>
+      {items.map((s) => (
+        <PosterCard
+          key={s.series_id}
+          className={CARD}
+          item={{ id: s.series_id, name: s.name, poster: s.cover, rating: s.rating, year: yearFrom(s.releaseDate, s.name) }}
+          href={`/series/${s.series_id}`}
+        />
+      ))}
+    </Shelf>
+  );
+}
+
+function ShelfSkeleton({ title }: { title?: string }) {
+  return (
+    <section>
+      <div className="mb-3 px-5 sm:px-8">
+        {title ? <h2 className="text-lg font-semibold">{title}</h2> : <Skeleton className="h-6 w-40" />}
+      </div>
+      <PosterSkeletonRow />
+    </section>
   );
 }
