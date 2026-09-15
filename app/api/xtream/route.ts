@@ -5,9 +5,7 @@ import { cached } from "@/lib/xtream/cache";
 
 export const runtime = "nodejs";
 
-// Per-action cache TTLs (ms). Catalogs change rarely; EPG is more volatile.
 const HOUR = 60 * 60 * 1000;
-// Catalogs change rarely; cache long + persist to disk so cold loads are paid once.
 const TTL: Record<string, number> = {
   get_vod_streams: 3 * HOUR,
   get_series: 3 * HOUR,
@@ -19,11 +17,6 @@ const TTL: Record<string, number> = {
   get_series_info: 6 * HOUR,
 };
 
-/**
- * Generic same-origin proxy for player_api.php actions.
- *   GET /api/xtream?action=get_live_streams&category_id=5
- * Credentials are pulled from the httpOnly session cookie — never from the client.
- */
 export async function GET(req: Request) {
   let creds;
   try {
@@ -38,13 +31,46 @@ export async function GET(req: Request) {
 
   const params: Record<string, string | undefined> = {};
   for (const [k, v] of searchParams.entries()) {
-    if (k !== "action") params[k] = v;
+    if (k !== "action" && k !== "nocache") params[k] = v;
   }
+
+  // 1. Normalisation universelle de series_id pour get_series_info
+  if (action === "get_series_info") {
+    const seriesId = params.series_id || params.id;
+    if (seriesId) {
+      params.series_id = seriesId;
+    }
+  }
+
+  const noCache = searchParams.get("nocache") === "1";
 
   try {
     const ttl = TTL[action] ?? 60 * 1000;
-    const key = `${creds.username}|${action}|${JSON.stringify(params)}`;
-    const data = await cached(key, ttl, () => dispatch(creds, action, params));
+    // Trier les clés de params pour garantir une clé de cache déterministe
+    const sortedParams = Object.keys(params).sort().reduce((acc, k) => {
+      acc[k] = params[k];
+      return acc;
+    }, {} as Record<string, string | undefined>);
+
+    const key = `${creds.username}|${action}|${JSON.stringify(sortedParams)}`;
+
+    // 2. Si nocache=1 est passé, exécute directement sans lire/écrire le cache
+    if (noCache) {
+      const data = await dispatch(creds, action, params);
+      return NextResponse.json(data, {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+
+    const data = await cached(key, ttl, async () => {
+      const result = await dispatch(creds, action, params);
+      // 3. Sécurité : Ne pas mettre en cache si le résultat est nul ou vide
+      if (!result || (typeof result === "object" && Object.keys(result).length === 0)) {
+        throw new Error("Empty response from upstream provider");
+      }
+      return result;
+    });
+
     return NextResponse.json(data, {
       headers: { "Cache-Control": "private, max-age=60" },
     });
