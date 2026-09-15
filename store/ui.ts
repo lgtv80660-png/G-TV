@@ -4,13 +4,15 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { SortKey } from "@/lib/utils";
 
+export type Language = "fr" | "en" | "ar";
+
 export interface SectionFilter {
-  category: string; // "" = unset (auto-pick first) · "all" · or a category_id
+  category: string;
   sort: SortKey;
   query: string;
   view: "grid" | "list";
-  mode: "cat" | "country"; // free-TV: browse by category or country
-  country: string; // free-TV: selected country code
+  mode: "cat" | "country";
+  country: string;
 }
 
 export const DEFAULT_FILTER: SectionFilter = {
@@ -23,24 +25,26 @@ export const DEFAULT_FILTER: SectionFilter = {
 };
 
 interface UIState {
-  /** keyed by section: "movies" | "series" | "live" */
   filters: Record<string, SectionFilter>;
   searchQuery: string;
+  language: Language;
   patchFilter: (key: string, patch: Partial<SectionFilter>) => void;
   setSearchQuery: (q: string) => void;
+  setLanguage: (lang: Language) => void;
 }
 
-/** Remembers per-section category/sort/filter + global search across navigation. */
 export const useUI = create<UIState>()(
   persist(
     (set) => ({
       filters: {},
       searchQuery: "",
+      language: "fr",
       patchFilter: (key, patch) =>
         set((s) => ({
           filters: { ...s.filters, [key]: { ...DEFAULT_FILTER, ...s.filters[key], ...patch } },
         })),
       setSearchQuery: (q) => set({ searchQuery: q }),
+      setLanguage: (lang) => set({ language: lang }),
     }),
     { name: "G-Player-ui" },
   ),
