@@ -1,39 +1,35 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { api } from "@/lib/api";
-import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { Tv, Play, Search, LayoutGrid, ChevronDown, Check } from "lucide-react";
+import { useMemo, useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import { Tv, Maximize, LayoutGrid, ChevronDown, Check, Search } from "lucide-react";
+import { useLiveCategories, useLiveStreams } from "@/lib/hooks";
+import { SmartImage } from "@/components/ui/SmartImage";
+import { useUI, DEFAULT_FILTER } from "@/store/ui";
+import { sortItems, cleanName, cn } from "@/lib/utils";
+import type { LiveStream } from "@/lib/xtream/types";
 
 export function LiveBrowser() {
-  const [categories, setCategories] = useState<any[]>([]);
-  const [channels, setChannels] = useState<any[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [selectedChannel, setSelectedChannel] = useState<any>(null);
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  
-  // États pour le Popover Mobile des catégories
+  // 1. Récupération et filtrage des catégories (Exclusion de "Free TV")
+  const { data: allCats = [] } = useLiveCategories();
+  const cats = useMemo(() => {
+    return allCats.filter((c) => !c.category_name.toLowerCase().includes("free"));
+  }, [allCats]);
+
+  // 2. Gestion de l'état (Filtres et sélection)
+  const filter = useUI((s) => s.filters.live ?? DEFAULT_FILTER);
+  const patchFilter = useUI((s) => s.patchFilter);
+  const category = filter.category || "all";
+  const { sort, query } = filter;
+
+  const setCategory = (id: string) => patchFilter("live", { category: id });
+
+  // État local pour le popover de catégories mobile
   const [isCatOpen, setIsCatOpen] = useState(false);
   const [catSearch, setCatSearch] = useState("");
   const popoverRef = useRef<HTMLDivElement>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    Promise.all([api.liveCategories(), api.liveStreams()])
-      .then(([cats, streams]) => {
-        const catList = cats || [];
-        const streamList = streams || [];
-        setCategories(catList);
-        setChannels(streamList);
-
-        if (catList.length > 0) setSelectedCategory(String(catList[0].category_id));
-        if (streamList.length > 0) setSelectedChannel(streamList[0]);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
-
-  // Fermer le popover si on clique à l'extérieur
+  // Fermeture du popover au clic extérieur
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
@@ -44,193 +40,196 @@ export function LiveBrowser() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Filtrage des catégories dans le Popover
-  const filteredCategories = categories.filter((cat) =>
-    cat.category_name?.toLowerCase().includes(catSearch.toLowerCase())
-  );
+  const filteredCats = useMemo(() => {
+    if (!catSearch.trim()) return cats;
+    return cats.filter((c) => c.category_name.toLowerCase().includes(catSearch.toLowerCase()));
+  }, [cats, catSearch]);
 
-  const activeCategoryName =
-    selectedCategory === "all"
-      ? "All categories"
-      : categories.find((c) => String(c.category_id) === String(selectedCategory))?.category_name || "Select Category";
+  const activeCategoryName = useMemo(() => {
+    if (category === "all") return "All categories";
+    return cats.find((c) => c.category_id === category)?.category_name || "All categories";
+  }, [category, cats]);
 
-  // Filtrage des chaînes
-  const filteredChannels = channels.filter((ch) => {
-    const matchesCategory =
-      selectedCategory === "all" || String(ch.category_id) === String(selectedCategory);
-    const matchesSearch =
-      !searchQuery || ch.name?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  // État local pour la chaîne sélectionnée
+  const [activeChannel, setActiveChannel] = useState<LiveStream | null>(null);
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-500"></div>
-      </div>
-    );
-  }
+  // 3. Récupération et filtrage des chaînes
+  const { data, isLoading } = useLiveStreams(category === "all" ? undefined : category);
+
+  const filtered = useMemo(() => {
+    let items = data ?? [];
+    const q = query.trim().toLowerCase();
+    if (q) items = items.filter((c) => cleanName(c.name).toLowerCase().includes(q));
+    return sortItems(items, sort);
+  }, [data, query, sort]);
+
+  // Génération de l'URL du lecteur Lumen
+  const watchUrl = activeChannel
+    ? `/watch?type=live&id=${activeChannel.stream_id}&ext=ts&title=${encodeURIComponent(cleanName(activeChannel.name))}`
+    : null;
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      {/* BARRE POPUP DE CATÉGORIES (Mobile Uniquement) */}
-      <div className="block md:hidden relative" ref={popoverRef}>
+    <div className="flex flex-col md:flex-row h-auto md:h-[calc(100vh-80px)] w-full overflow-hidden border-t border-white/5">
+      
+      {/* BARRE POPUP CATÉGORIES (Mobile Uniquement : md:hidden) */}
+      <div className="block md:hidden p-3 border-b border-white/5 relative z-40" ref={popoverRef}>
         <button
           onClick={() => setIsCatOpen(!isCatOpen)}
           className="w-full flex items-center justify-between glass px-4 py-3 rounded-2xl text-xs font-semibold text-white border border-white/10 shadow-xl active:scale-[0.99] transition-all"
         >
           <div className="flex items-center gap-2.5 truncate">
-            <LayoutGrid className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+            <LayoutGrid className="w-4 h-4 text-iris-400 flex-shrink-0" />
             <span className="truncate">{activeCategoryName}</span>
           </div>
-          <ChevronDown className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${isCatOpen ? "rotate-180" : ""}`} />
+          <ChevronDown className={`w-4 h-4 text-fog-400 transition-transform duration-200 ${isCatOpen ? "rotate-180" : ""}`} />
         </button>
 
-        {/* Menu Déroulant Glassmorphism */}
         {isCatOpen && (
-          <div className="absolute top-full left-0 right-0 mt-2 z-50 panel rounded-2xl border border-white/10 p-2.5 shadow-2xl space-y-2 animate-in fade-in zoom-in-95 duration-150">
-            {/* Recherche dans les catégories */}
+          <div className="absolute top-full left-3 right-3 mt-2 panel rounded-2xl border border-white/10 p-2.5 shadow-2xl space-y-2 animate-in fade-in zoom-in-95 duration-150">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-3.5 h-3.5 text-fog-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 placeholder="Search categories..."
                 value={catSearch}
                 onChange={(e) => setCatSearch(e.target.value)}
-                className="w-full bg-black/50 border border-white/10 rounded-xl text-xs pl-8 pr-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-ink-950 border border-white/10 rounded-xl text-xs pl-8 pr-3 py-2 text-white placeholder-fog-500 focus:outline-none focus:border-iris-400"
               />
             </div>
 
-            {/* Liste scrollable */}
             <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
               <button
                 onClick={() => {
-                  setSelectedCategory("all");
+                  setCategory("all");
                   setIsCatOpen(false);
                 }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
-                  selectedCategory === "all" ? "bg-indigo-600/30 text-indigo-300 font-bold" : "text-zinc-300 hover:bg-white/5"
-                }`}
+                className={cn(
+                  "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors",
+                  category === "all" ? "bg-iris-500/20 text-iris-400 font-bold" : "text-fog-200 hover:bg-ink-800"
+                )}
               >
                 <span>All categories</span>
-                {selectedCategory === "all" && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                {category === "all" && <Check className="w-3.5 h-3.5 text-iris-400" />}
               </button>
 
-              {filteredCategories.map((cat) => {
-                const isActive = selectedCategory === String(cat.category_id);
-                return (
-                  <button
-                    key={cat.category_id}
-                    onClick={() => {
-                      setSelectedCategory(String(cat.category_id));
-                      setIsCatOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors text-left ${
-                      isActive ? "bg-indigo-600/30 text-indigo-300 font-bold" : "text-zinc-300 hover:bg-white/5"
-                    }`}
-                  >
-                    <span className="truncate pr-2">{cat.category_name}</span>
-                    {isActive && <Check className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />}
-                  </button>
-                );
-              })}
+              {filteredCats.map((c) => (
+                <button
+                  key={c.category_id}
+                  onClick={() => {
+                    setCategory(c.category_id);
+                    setIsCatOpen(false);
+                  }}
+                  className={cn(
+                    "w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors text-left",
+                    category === c.category_id ? "bg-iris-500/20 text-iris-400 font-bold" : "text-fog-200 hover:bg-ink-800"
+                  )}
+                >
+                  <span className="truncate pr-2">{c.category_name}</span>
+                  {category === c.category_id && <Check className="w-3.5 h-3.5 text-iris-400 flex-shrink-0" />}
+                </button>
+              ))}
             </div>
           </div>
         )}
       </div>
 
-      {/* DISPOSITION EN 3 COLONNES (WEB) / STACK (MOBILE) */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-        {/* Sidebar Catégories Web */}
-        <div className="hidden md:flex md:col-span-4 lg:col-span-3 panel rounded-2xl p-4 flex-col gap-1.5 h-[calc(100vh-140px)] overflow-y-auto">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2">Categories</h2>
+      {/* COLONNE 1 : Catégories (Web Uniquement : hidden md:flex) */}
+      <div className="hidden md:flex w-1/4 max-w-[280px] shrink-0 border-r border-white/5 bg-ink-900/50 flex-col">
+        <div className="p-4 border-b border-white/5 font-semibold text-fog-200">Catégories</div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
           <button
-            onClick={() => setSelectedCategory("all")}
-            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors ${
-              selectedCategory === "all" ? "bg-indigo-600 text-white font-bold" : "text-zinc-300 hover:bg-white/5"
-            }`}
+            onClick={() => setCategory("all")}
+            className={cn(
+              "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
+              category === "all" ? "bg-iris-500/20 text-iris-400" : "hover:bg-ink-800 text-fog-400"
+            )}
           >
-            All categories
+            Toutes les chaînes
           </button>
-          {categories.map((cat) => {
-            const isActive = selectedCategory === String(cat.category_id);
-            return (
-              <button
-                key={cat.category_id}
-                onClick={() => setSelectedCategory(String(cat.category_id))}
-                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors whitespace-normal break-words leading-snug ${
-                  isActive ? "bg-indigo-600 text-white font-bold" : "text-zinc-300 hover:bg-white/5"
-                }`}
-              >
-                {cat.category_name}
-              </button>
-            );
-          })}
+          {cats.map((c) => (
+            <button
+              key={c.category_id}
+              onClick={() => setCategory(c.category_id)}
+              className={cn(
+                "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors truncate",
+                category === c.category_id ? "bg-iris-500/20 text-iris-400" : "hover:bg-ink-800 text-fog-400"
+              )}
+            >
+              {c.category_name}
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* Colonne Chaînes */}
-        <div className="col-span-1 md:col-span-4 lg:col-span-4 panel rounded-2xl p-4 space-y-3 h-[380px] md:h-[calc(100vh-140px)] overflow-y-auto flex flex-col">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-              Channels ({filteredChannels.length})
-            </h2>
-          </div>
-
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search channel..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-black/40 border border-white/5 rounded-xl text-xs px-3 py-2 pl-8 text-white focus:outline-none focus:border-indigo-500"
-            />
-            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
-          </div>
-
-          <div className="space-y-1.5 flex-1 overflow-y-auto">
-            {filteredChannels.map((ch) => {
-              const isSelected = selectedChannel?.stream_id === ch.stream_id;
-              return (
-                <button
-                  key={ch.stream_id}
-                  onClick={() => setSelectedChannel(ch)}
-                  className={`w-full flex items-center gap-3 p-2.5 rounded-xl border transition-all text-left ${
-                    isSelected ? "border-indigo-500/50 bg-indigo-500/10 text-white font-semibold" : "border-transparent text-zinc-300 hover:bg-white/5"
-                  }`}
-                >
-                  <Tv className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-                  <span className="text-xs font-medium truncate flex-1">{ch.name}</span>
-                  {isSelected && <Play className="w-3 h-3 fill-current text-indigo-400" />}
-                </button>
-              );
-            })}
-          </div>
+      {/* COLONNE 2 : Chaînes (Liste verticale) */}
+      <div className="w-full md:w-1/3 md:min-w-[300px] md:shrink-0 border-r border-white/5 bg-ink-900/30 flex flex-col h-[320px] md:h-full">
+        <div className="p-4 border-b border-white/5 flex items-center justify-between">
+          <span className="font-semibold text-fog-200">Chaînes</span>
+          <span className="text-xs text-fog-500">{filtered.length} chaînes</span>
         </div>
-
-        {/* Colonne Lecteur Live */}
-        <div className="col-span-1 md:col-span-4 lg:col-span-5 space-y-3 panel rounded-2xl p-4 sticky top-4">
-          {selectedChannel ? (
-            <>
-              <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5">
-                <VideoPlayer
-                  key={selectedChannel.stream_id}
-                  sources={[`/api/stream?type=live&id=${selectedChannel.stream_id}&ext=ts`]}
-                  ext="ts"
-                  isLive={true}
-                  title={selectedChannel.name}
-                />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">{selectedChannel.name}</h3>
-              </div>
-            </>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {isLoading ? (
+            <p className="text-center text-sm text-fog-500 mt-10">Chargement...</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-center text-sm text-fog-500 mt-10">Aucune chaîne</p>
           ) : (
-            <div className="aspect-video w-full rounded-xl bg-black/50 border border-white/5 flex items-center justify-center text-xs text-zinc-500">
-              Select a channel to play live
-            </div>
+            filtered.map((c) => (
+              <button
+                key={c.stream_id}
+                onClick={() => setActiveChannel(c)}
+                className={cn(
+                  "w-full flex items-center gap-3 p-2 rounded-lg transition-colors text-left",
+                  activeChannel?.stream_id === c.stream_id ? "bg-ink-800" : "hover:bg-ink-850"
+                )}
+              >
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ink-950 overflow-hidden">
+                  {c.stream_icon ? (
+                    <SmartImage src={c.stream_icon} alt={c.name} className="h-10 w-10" />
+                  ) : (
+                    <Tv className="h-5 w-5 text-fog-600" />
+                  )}
+                </div>
+                <span className="truncate text-sm font-medium text-fog-200 flex-1">{cleanName(c.name)}</span>
+              </button>
+            ))
           )}
         </div>
       </div>
+
+      {/* COLONNE 3 : Aperçu du Player */}
+      <div className="flex-1 bg-ink-950 flex flex-col p-4 md:p-6">
+        {activeChannel ? (
+          <div className="w-full max-w-5xl mx-auto space-y-4">
+            <div className="aspect-video w-full bg-black rounded-xl overflow-hidden relative border border-white/10 shadow-2xl group">
+              <iframe
+                src={watchUrl!}
+                className="w-full h-full pointer-events-none"
+                allow="autoplay; fullscreen"
+              />
+              <Link
+                href={watchUrl!}
+                className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+              >
+                <div className="bg-iris-500 text-ink-950 px-6 py-3 rounded-full font-bold flex items-center gap-2 transform hover:scale-105 transition-transform">
+                  <Maximize className="h-5 w-5" />
+                  Regarder en plein écran
+                </div>
+              </Link>
+            </div>
+
+            <div className="px-2">
+              <h2 className="text-xl md:text-2xl font-bold text-white">{cleanName(activeChannel.name)}</h2>
+              <p className="text-fog-400 mt-1 text-xs md:text-sm">Cliquez sur la vidéo pour basculer vers le lecteur complet.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="h-[220px] md:h-full flex flex-col items-center justify-center text-fog-500 space-y-4">
+            <Tv className="h-12 md:h-16 w-12 md:w-16 opacity-20" />
+            <p className="text-xs md:text-sm">Sélectionnez une chaîne dans la liste pour afficher l'aperçu</p>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
