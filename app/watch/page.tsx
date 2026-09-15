@@ -26,7 +26,6 @@ function WatchInner() {
   const freeUrl = params.get("url") || "";
   const isLive = type === "live" || type === "freetv";
 
-  // ordered episode list for next-episode (series only)
   const { data: seriesInfo } = useSeriesInfo(type === "series" ? seriesId : undefined);
   const flatEpisodes = useMemo<Episode[]>(() => {
     if (!seriesInfo?.episodes) return [];
@@ -39,7 +38,6 @@ function WatchInner() {
   const currentIdx = flatEpisodes.findIndex((e) => String(e.id) === id);
   const nextEp = currentIdx >= 0 ? flatEpisodes[currentIdx + 1] : undefined;
 
-  // Real runtime & poster from provider metadata for Movies
   const { data: movieInfo } = useQuery({
     queryKey: ["vod", "info", id],
     queryFn: () => api.vodInfo(id),
@@ -47,12 +45,11 @@ function WatchInner() {
     staleTime: 30 * 60 * 1000,
   });
 
-  // Extraction intelligente du poster (URL -> Metadata Film -> Metadata Série)
   const poster = useMemo(() => {
     if (urlPoster) return urlPoster;
     if (type === "movie") {
-      const inf = movieInfo?.info || movieInfo?.movie_data;
-      return inf?.movie_image || inf?.cover_big || inf?.cover;
+      const inf = (movieInfo?.info || movieInfo?.movie_data) as any;
+      return inf?.movie_image || inf?.cover_big || inf?.cover || inf?.stream_icon;
     }
     if (type === "series") {
       return seriesInfo?.info?.cover;
