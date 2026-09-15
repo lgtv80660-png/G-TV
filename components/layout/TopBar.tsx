@@ -6,9 +6,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, LogOut, User, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { LanguagePicker } from "@/components/ui/LanguagePicker";
+import { useTranslation } from "@/lib/useTranslation";
 
 export function TopBar({ title }: { title?: string }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
 
@@ -46,38 +49,42 @@ export function TopBar({ title }: { title?: string }) {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search everything…"
+            placeholder={t("TopBar.searchPlaceholder")}
             className="w-full bg-transparent text-sm text-foreground placeholder:text-fog-500 focus:outline-none"
           />
         </div>
       </form>
 
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          "relative ml-auto grid h-10 w-10 place-items-center rounded-full border border-white/8 bg-ink-850 text-fog-300 transition-colors hover:text-foreground sm:ml-0",
-        )}
-        aria-label="Account"
-      >
-        <User className="h-5 w-5" />
-      </button>
+      <div className="ml-auto flex items-center gap-2 sm:ml-0">
+        <LanguagePicker />
+
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className={cn(
+            "relative grid h-10 w-10 place-items-center rounded-full border border-white/8 bg-ink-850 text-fog-300 transition-colors hover:text-foreground",
+          )}
+          aria-label="Account"
+        >
+          <User className="h-5 w-5" />
+        </button>
+      </div>
 
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
           <div className="absolute right-5 top-16 z-40 w-72 rounded-2xl panel p-4 sm:right-8">
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-semibold">Account</span>
+              <span className="text-sm font-semibold">{t("TopBar.account")}</span>
               <button onClick={() => setOpen(false)} className="text-fog-500 hover:text-foreground">
                 <X className="h-4 w-4" />
               </button>
             </div>
             <dl className="space-y-2 text-sm">
-              <Row label="User" value={data?.username ?? "—"} />
-              <Row label="Status" value={data?.user_info?.status ?? "—"} />
-              <Row label="Expires" value={expiry} />
+              <Row label={t("TopBar.user")} value={data?.username ?? "—"} />
+              <Row label={t("TopBar.status")} value={data?.user_info?.status ?? "—"} />
+              <Row label={t("TopBar.expires")} value={expiry} />
               <Row
-                label="Connections"
+                label={t("TopBar.connections")}
                 value={
                   data?.user_info
                     ? `${data.user_info.active_cons} / ${data.user_info.max_connections}`
@@ -89,7 +96,7 @@ export function TopBar({ title }: { title?: string }) {
               onClick={logout}
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-ink-700 py-2.5 text-sm font-medium text-fog-300 transition-colors hover:bg-red-500/15 hover:text-red-300"
             >
-              <LogOut className="h-4 w-4" /> Sign out
+              <LogOut className="h-4 w-4" /> {t("TopBar.signOut")}
             </button>
           </div>
         </>
