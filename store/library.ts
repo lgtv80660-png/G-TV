@@ -102,7 +102,7 @@ export const useLibrary = create<LibraryState>()(
 
       saveProgress: (p) =>
         set((s) => {
-          // drop near-finished items from continue-watching
+          // drop near-finished items from continue-watching (>95%)
           if (p.duration > 0 && p.position / p.duration > 0.95) {
             const next = { ...s.progress };
             delete next[p.key];
@@ -125,7 +125,6 @@ export const useLibrary = create<LibraryState>()(
       version: 3,
       migrate: (state: unknown, version: number) => {
         const s = state as LibraryState;
-        // v1 stored favourites as number[]; drop them so the new object shape is clean.
         if (version < 2 && s?.favourites) {
           s.favourites = { live: [], movie: [], series: [] };
         }
@@ -136,9 +135,14 @@ export const useLibrary = create<LibraryState>()(
   ),
 );
 
-/** Continue-watching list, newest first. */
+/** Continue-watching list, movies & series only, newest first. */
 export function continueWatching(progress: Record<string, WatchProgress>): WatchProgress[] {
   return Object.values(progress)
-    .filter((p) => p.duration > 0 && p.position > 15)
+    .filter(
+      (p) =>
+        (p.kind === "movie" || p.kind === "series") &&
+        p.duration > 0 &&
+        p.position > 5
+    )
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
