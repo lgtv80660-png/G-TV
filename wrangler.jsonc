@@ -5,8 +5,10 @@
     "dev": "next dev",
     "build": "opennextjs-cloudflare build",
     "start": "next start",
-    "lint": "next lint",
     "deploy": "opennextjs-cloudflare deploy",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview"
+  },
+  "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.6"
   }
 }
