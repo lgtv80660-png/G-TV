@@ -24,6 +24,7 @@ export function VideoPlayer({
   ext,
   isLive,
   title,
+  poster,
   startTime = 0,
   hasNext,
   onNext,
@@ -38,11 +39,12 @@ export function VideoPlayer({
   ext: string;
   isLive: boolean;
   title: string;
+  poster?: string;
   startTime?: number;
   hasNext?: boolean;
   onNext?: () => void;
   onBack?: () => void;
-  onProgress?: (position: number, duration: number) => void;
+  onProgress?: (position: number, duration: number, poster?: string) => void;
   onEnded?: () => void;
   /** Provider-supplied subtitle tracks (proxied .vtt URLs). */
   subtitles?: Array<{ label: string; src: string; lang?: string }>;
@@ -125,9 +127,6 @@ export function VideoPlayer({
       }
     })();
 
-    // Startup watchdog: if playback hasn't begun in time, switch to a backup
-    // source — or, if this is the last/only source, surface a clear error instead
-    // of spinning forever (common for offline / [Not 24/7] / geo-blocked channels).
     const isLastSource = srcIdx >= sources.length - 1;
     const watchdog = setTimeout(
       () => {
@@ -159,11 +158,10 @@ export function VideoPlayer({
     const onWaiting = () => setBuffering(true);
     const onPlaying = () => {
       setBuffering(false);
-      setError(null); // recovered (e.g. slow start after the watchdog fired)
+      setError(null);
     };
     const onLoaded = () => {
       setDuration(v.duration || 0);
-      // native VOD resumes via currentTime; transcoded streams resume via ?t= reload
       if (!isLive && !isTranscode && startTime > 0 && startTime < (v.duration || Infinity)) {
         v.currentTime = startTime;
       }
@@ -171,11 +169,10 @@ export function VideoPlayer({
     const onTime = () => {
       setCurrent(v.currentTime);
       setDuration(v.duration || 0);
-      // remuxed streams report a growing fake duration — report real runtime + offset.
       if (isTranscode) {
-        if (knownDuration > 0) onProgress?.(seekBase + v.currentTime, knownDuration);
+        if (knownDuration > 0) onProgress?.(seekBase + v.currentTime, knownDuration, poster);
       } else {
-        onProgress?.(v.currentTime, v.duration || 0);
+        onProgress?.(v.currentTime, v.duration || 0, poster);
       }
     };
     const onEnd = () => onEnded?.();
@@ -200,7 +197,7 @@ export function VideoPlayer({
       v.removeEventListener("ended", onEnd);
       v.removeEventListener("error", onErr);
     };
-  }, [ext, isLive, startTime, onProgress, onEnded, tryFallback, isTranscode, knownDuration, seekBase]);
+  }, [ext, isLive, startTime, onProgress, onEnded, tryFallback, isTranscode, knownDuration, seekBase, poster]);
 
   useEffect(() => {
     const onFs = () => setFullscreen(!!document.fullscreenElement);
@@ -220,7 +217,6 @@ export function VideoPlayer({
       if (isLive) return;
       const target = Math.max(0, Math.min(t, total || Infinity));
       if (isTranscode) {
-        // restart ffmpeg from the new offset (the attach effect reloads on src change)
         setCurrent(0);
         setSeekBase(target);
       } else {
@@ -261,7 +257,6 @@ export function VideoPlayer({
     } catch {}
   };
 
-  // keep playbackRate applied across source swaps
   useEffect(() => {
     const v = videoRef.current;
     if (v) v.playbackRate = speed;
@@ -284,7 +279,6 @@ export function VideoPlayer({
         return url;
       });
       setSubName(file.name);
-      // select the newly added (last) track shortly after it mounts
       setTimeout(() => {
         const v = videoRef.current;
         if (v && v.textTracks.length) selectTrack(v.textTracks.length - 1);
@@ -302,7 +296,6 @@ export function VideoPlayer({
     setActiveTrack(idx);
   }, []);
 
-  // keep the visible track list in sync with the <video>'s text tracks
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -333,7 +326,6 @@ export function VideoPlayer({
     }, 3000);
   }, []);
 
-  // keyboard
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) return;
@@ -380,7 +372,6 @@ export function VideoPlayer({
         {subUrl && <track kind="subtitles" src={subUrl} label={subName || "Loaded file"} />}
       </video>
 
-      {/* hidden subtitle file picker */}
       <input
         ref={subFileRef}
         type="file"
@@ -393,14 +384,12 @@ export function VideoPlayer({
         }}
       />
 
-      {/* buffering */}
       {buffering && !error && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <Loader2 className="h-12 w-12 animate-spin text-iris-400" />
         </div>
       )}
 
-      {/* error */}
       {error && (
         <div className="absolute inset-0 grid place-items-center bg-ink-950/90 px-6 text-center">
           <div className="max-w-md">
@@ -417,7 +406,6 @@ export function VideoPlayer({
         </div>
       )}
 
-      {/* top gradient + title + back */}
       <div
         className={cn(
           "pointer-events-none absolute inset-x-0 top-0 flex items-start gap-3 bg-gradient-to-b from-black/80 to-transparent px-5 pb-12 pt-5 transition-opacity sm:px-8",
@@ -440,14 +428,12 @@ export function VideoPlayer({
         </div>
       </div>
 
-      {/* bottom controls */}
       <div
         className={cn(
           "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-5 pb-5 pt-16 transition-opacity sm:px-8",
           controlsOn ? "opacity-100" : "opacity-0",
         )}
       >
-        {/* seek bar (VOD) */}
         {!isLive && (
           <div className="mb-3 flex items-center gap-3 text-xs tabular-nums text-fog-300">
             <span className="w-12 text-right">{formatTime(scrub ?? displayCurrent)}</span>
@@ -515,7 +501,6 @@ export function VideoPlayer({
           </div>
 
           <div className="ml-auto flex items-center gap-3 sm:gap-4">
-            {/* subtitles / captions menu */}
             <div className="relative">
               <button
                 onClick={() => setCapMenu((v) => !v)}
@@ -561,7 +546,6 @@ export function VideoPlayer({
               )}
             </div>
 
-            {/* playback speed */}
             {!isLive && (
               <div className="relative">
                 <button
