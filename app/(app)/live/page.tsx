@@ -16,10 +16,18 @@ export default function LiveTvPage() {
   useEffect(() => {
     Promise.all([api.liveCategories(), api.liveStreams()])
       .then(([cats, streams]) => {
-        setCategories(cats || []);
-        setChannels(streams || []);
-        if (streams && streams.length > 0) {
-          setSelectedChannel(streams[0]);
+        const catList = cats || [];
+        const streamList = streams || [];
+        
+        setCategories(catList);
+        setChannels(streamList);
+
+        // Sélectionne la première catégorie et la première chaîne par défaut
+        if (catList.length > 0) {
+          setSelectedCategory(String(catList[0].category_id));
+        }
+        if (streamList.length > 0) {
+          setSelectedChannel(streamList[0]);
         }
       })
       .catch(console.error)
@@ -48,7 +56,7 @@ export default function LiveTvPage() {
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-4 md:p-6 space-y-4">
       <h1 className="text-xl font-bold tracking-tight">Live TV</h1>
 
-      {/* --- MENU DÉROULANT CATÉGORIES (Mobile Uniquement) --- */}
+      {/* Dropdown Mobile pour les Catégories */}
       <div className="block md:hidden relative">
         <label className="text-xs font-semibold text-zinc-400 mb-1 block">
           Catégorie :
@@ -70,11 +78,11 @@ export default function LiveTvPage() {
         </div>
       </div>
 
-      {/* --- LAYOUT PRINCIPAL (3 Colonnes Web / Stack Responsive Mobile) --- */}
+      {/* Grid 3 Colonnes Web */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
         
-        {/* COLONNE 1 : Catégories en Sidebar (Web Uniquement) */}
-        <div className="hidden md:flex md:col-span-3 lg:col-span-3 bg-[#12141c] border border-white/5 rounded-2xl p-4 flex-col gap-2 max-h-[calc(100vh-140px)] overflow-y-auto">
+        {/* Colonne 1 : Catégories (Web) */}
+        <div className="hidden md:flex md:col-span-3 bg-[#12141c] border border-white/5 rounded-2xl p-4 flex-col gap-1.5 h-[calc(100vh-140px)] overflow-y-auto">
           <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2">
             Catégories
           </h2>
@@ -82,7 +90,7 @@ export default function LiveTvPage() {
             onClick={() => setSelectedCategory("all")}
             className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-medium transition-colors ${
               selectedCategory === "all"
-                ? "bg-indigo-600 text-white"
+                ? "bg-indigo-600 text-white font-bold"
                 : "text-zinc-400 hover:bg-white/5 hover:text-white"
             }`}
           >
@@ -96,7 +104,7 @@ export default function LiveTvPage() {
                 onClick={() => setSelectedCategory(String(cat.category_id))}
                 className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-medium transition-colors truncate ${
                   isActive
-                    ? "bg-indigo-600 text-white"
+                    ? "bg-indigo-600 text-white font-bold"
                     : "text-zinc-400 hover:bg-white/5 hover:text-white"
                 }`}
               >
@@ -106,15 +114,14 @@ export default function LiveTvPage() {
           })}
         </div>
 
-        {/* COLONNE 2 : Liste des Chaînes (Mobile + Web) */}
-        <div className="col-span-1 md:col-span-4 lg:col-span-4 bg-[#12141c] border border-white/5 rounded-2xl p-4 space-y-3 max-h-[350px] md:max-h-[calc(100vh-140px)] overflow-y-auto">
+        {/* Colonne 2 : Chaînes */}
+        <div className="col-span-1 md:col-span-4 bg-[#12141c] border border-white/5 rounded-2xl p-4 space-y-3 h-[380px] md:h-[calc(100vh-140px)] overflow-y-auto flex flex-col">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
               Chaînes ({filteredChannels.length})
             </h2>
           </div>
 
-          {/* Barre de recherche rapide */}
           <div className="relative">
             <input
               type="text"
@@ -126,7 +133,7 @@ export default function LiveTvPage() {
             <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 flex-1 overflow-y-auto">
             {filteredChannels.map((ch) => {
               const isSelected = selectedChannel?.stream_id === ch.stream_id;
               return (
@@ -135,7 +142,7 @@ export default function LiveTvPage() {
                   onClick={() => setSelectedChannel(ch)}
                   className={`w-full flex items-center gap-3 p-2.5 rounded-xl border transition-all text-left ${
                     isSelected
-                      ? "border-indigo-500/50 bg-indigo-500/10 text-white"
+                      ? "border-indigo-500/50 bg-indigo-500/10 text-white font-semibold"
                       : "border-transparent text-zinc-300 hover:bg-white/5"
                   }`}
                 >
@@ -150,20 +157,22 @@ export default function LiveTvPage() {
           </div>
         </div>
 
-        {/* COLONNE 3 : Lecteur Live TV (Mobile + Web) */}
-        <div className="col-span-1 md:col-span-5 lg:col-span-5 space-y-3 bg-[#12141c] border border-white/5 rounded-2xl p-4 sticky top-4">
+        {/* Colonne 3 : Lecteur TV (Remplissage 100% de la zone vidéo) */}
+        <div className="col-span-1 md:col-span-5 space-y-3 bg-[#12141c] border border-white/5 rounded-2xl p-4 sticky top-4">
           {selectedChannel ? (
             <>
               <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5">
-                <VideoPlayer
-                  key={selectedChannel.stream_id}
-                  sources={[
-                    `/api/stream?type=live&id=${selectedChannel.stream_id}&ext=ts`,
-                  ]}
-                  ext="ts"
-                  isLive={true}
-                  title={selectedChannel.name}
-                />
+                <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
+                  <VideoPlayer
+                    key={selectedChannel.stream_id}
+                    sources={[
+                      `/api/stream?type=live&id=${selectedChannel.stream_id}&ext=ts`,
+                    ]}
+                    ext="ts"
+                    isLive={true}
+                    title={selectedChannel.name}
+                  />
+                </div>
               </div>
               <div>
                 <h3 className="text-sm font-bold text-white">{selectedChannel.name}</h3>
