@@ -30,17 +30,20 @@ function EpisodeImage({
   const [imgSrc, setImgSrc] = useState<string | null>(ep.info?.movie_image || fallbackCover || null);
 
   useEffect(() => {
+    // Si Xtream a déjà fourni l'image de l'épisode, on l'utilise directement
     if (ep.info?.movie_image) return;
 
     let isMounted = true;
     const cleanSeason = seasonKey.replace(/\D/g, "") || "1";
+    const cleanTitle = seriesTitle.split("-")[0].replace(/\(\d{4}\)/g, "").trim();
 
-    fetch(
-      `/api/episode-image?tmdbId=${tmdbId || ""}&show=${encodeURIComponent(seriesTitle)}&season=${cleanSeason}&episode=${ep.episode_num}`
-    )
+    // Utilisation directe de ton API /api/tmdb existante
+    fetch(`/api/tmdb?type=episode&id=${tmdbId || ""}&query=${encodeURIComponent(cleanTitle)}&season=${cleanSeason}&episode=${ep.episode_num}`)
       .then((res) => res.json())
       .then((data) => {
-        if (isMounted && data?.imageUrl) {
+        if (isMounted && data?.still_path) {
+          setImgSrc(`https://image.tmdb.org/t/p/w500${data.still_path}`);
+        } else if (isMounted && data?.imageUrl) {
           setImgSrc(data.imageUrl);
         }
       })
