@@ -20,9 +20,10 @@ function WatchInner() {
   const id = params.get("id") || "";
   const ext = params.get("ext") || (type === "live" ? "ts" : "mp4");
   const title = params.get("title") || "Now Playing";
+  const urlPoster = params.get("poster") || params.get("cover") || undefined;
   const resume = Number(params.get("resume") || 0);
   const seriesId = params.get("series") || undefined;
-  const freeUrl = params.get("url") || ""; // free-TV public m3u8
+  const freeUrl = params.get("url") || "";
   const isLive = type === "live" || type === "freetv";
 
   // ordered episode list for next-episode (series only)
@@ -37,16 +38,28 @@ function WatchInner() {
 
   const currentIdx = flatEpisodes.findIndex((e) => String(e.id) === id);
   const nextEp = currentIdx >= 0 ? flatEpisodes[currentIdx + 1] : undefined;
-  const poster = type === "series" ? seriesInfo?.info?.cover : undefined;
 
-  // Real runtime from provider metadata — used to show a correct total/progress
-  // when a remuxed (fragmented) stream reports no duration of its own.
+  // Real runtime & poster from provider metadata for Movies
   const { data: movieInfo } = useQuery({
     queryKey: ["vod", "info", id],
     queryFn: () => api.vodInfo(id),
     enabled: type === "movie" && !!id,
     staleTime: 30 * 60 * 1000,
   });
+
+  // Extraction intelligente du poster (URL -> Metadata Film -> Metadata Série)
+  const poster = useMemo(() => {
+    if (urlPoster) return urlPoster;
+    if (type === "movie") {
+      const inf = movieInfo?.info || movieInfo?.movie_data;
+      return inf?.movie_image || inf?.cover_big || inf?.cover;
+    }
+    if (type === "series") {
+      return seriesInfo?.info?.cover;
+    }
+    return undefined;
+  }, [urlPoster, type, movieInfo, seriesInfo]);
+
   const knownDuration = useMemo(() => {
     if (type === "movie") {
       const inf = movieInfo?.info;
@@ -59,12 +72,8 @@ function WatchInner() {
     return 0;
   }, [type, id, movieInfo, flatEpisodes]);
 
-  // VOD plays directly from the provider when that's viable (fast); otherwise
-  // we go straight to the proxy. Live always uses the proxy (MSE/CORS).
   const mediaKind = (type === "freetv" ? "live" : type) as StreamKind;
 
-  // VOD plays directly from the provider when that's viable (fast); otherwise
-  // we go straight to the proxy. Live always uses the proxy (MSE/CORS).
   const { data: resolved, isLoading: resolving } = useQuery({
     queryKey: ["resolve", type, id, ext],
     queryFn: () => resolveSrc(mediaKind, id, ext),
@@ -73,18 +82,13 @@ function WatchInner() {
   });
 
   const sources = useMemo(() => {
-    // Free TV: a public m3u8 played straight through the HLS proxy.
     if (type === "freetv") return freeUrl ? [freeTvSrc(freeUrl)] : [];
     const proxy = streamSrc(mediaKind, id, ext);
-    // Live: HLS first (smooth, self-healing, adaptive) → raw MPEG-TS proxy fallback.
     if (isLive) return [`/api/hls?id=${id}`, proxy];
-    // VOD chain: [direct (only if the probe says browsers are allowed)] → proxy →
-    // ffmpeg remux (handles MKV/AVI the browser can't decode natively).
     const transcode = transcodeSrc(mediaKind, id, ext);
     return [...(resolved?.directOk && resolved.url ? [resolved.url] : []), proxy, transcode];
   }, [isLive, type, mediaKind, id, ext, freeUrl, resolved]);
 
-  // mark live channels recently-watched once
   const recentedRef = useRef(false);
   if (type === "live" && !recentedRef.current && id) {
     recentedRef.current = true;
@@ -93,18 +97,21 @@ function WatchInner() {
 
   const lastSave = useRef(0);
   const onProgress = useCallback(
-    (position: number, duration: number) => {
+    (position: number, duration: number, playerPoster?: string) => {
       if (isLive || !duration) return;
       const now = Date.now();
       if (now - lastSave.current < 5000) return;
       lastSave.current = now;
+
+      const finalPoster = playerPoster || poster;
+
       saveProgress({
         key: `${mediaKind}:${id}`,
         kind: mediaKind,
         id,
         seriesId,
         title,
-        poster: poster || undefined,
+        poster: finalPoster,
         ext,
         position,
         duration,
@@ -144,6 +151,7 @@ function WatchInner() {
       ext={ext}
       isLive={isLive}
       title={title}
+      poster={poster}
       startTime={resume}
       hasNext={!!nextEp}
       knownDuration={knownDuration}
