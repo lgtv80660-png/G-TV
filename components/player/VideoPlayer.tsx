@@ -4,12 +4,19 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   PictureInPicture2, Loader2, AlertTriangle, SkipForward, ArrowLeft,
-  RotateCcw, RotateCw, Captions, Gauge, Check, Upload,
+  RotateCcw, RotateCw, Captions, Gauge, Check, Upload, Languages,
 } from "lucide-react";
 import { attach, type EngineHandle } from "@/lib/player/engine";
 import { formatTime, cn } from "@/lib/utils";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+const AUTO_SUB_LANGS = [
+  { code: "ar", label: "العربية (Arabe)" },
+  { code: "fr", label: "Français" },
+  { code: "en", label: "English" },
+  { code: "fa", label: "فارسی (Perse)" },
+];
 
 /** Convert SubRip (.srt) text to WebVTT so the browser can render it. */
 function srtToVtt(text: string): string {
@@ -34,7 +41,6 @@ export function VideoPlayer({
   subtitles = [],
   knownDuration = 0,
 }: {
-  /** Ordered candidate URLs — first is tried, next used on failure (direct → proxy). */
   sources: string[];
   ext: string;
   isLive: boolean;
@@ -46,9 +52,7 @@ export function VideoPlayer({
   onBack?: () => void;
   onProgress?: (position: number, duration: number, poster?: string) => void;
   onEnded?: () => void;
-  /** Provider-supplied subtitle tracks (proxied .vtt URLs). */
   subtitles?: Array<{ label: string; src: string; lang?: string }>;
-  /** Real runtime (s) from metadata — used when a remuxed stream has no duration. */
   knownDuration?: number;
 }) {
   const extSubs = subtitles;
@@ -73,22 +77,28 @@ export function VideoPlayer({
   const [subUrl, setSubUrl] = useState<string | null>(null);
   const [subName, setSubName] = useState<string | null>(null);
   const [capMenu, setCapMenu] = useState(false);
-  const [trackList, setTrackList] = useState<Array<{ index: number; label: string }>>([]);
-  const [activeTrack, setActiveTrack] = useState<number>(-1); // -1 = off
+  const [audioMenu, setAudioMenu] = useState(false);
 
-  // pseudo-seek for remuxed streams: reload ffmpeg from an offset
+  // Audio Tracks (hls.js / Native)
+  const [audioTracks, setAudioTracks] = useState<Array<{ id: number; label: string }>>([]);
+  const [activeAudio, setActiveAudio] = useState<number>(0);
+
+  // Subtitle Tracks (Native + OpenSubtitles)
+  const [trackList, setTrackList] = useState<Array<{ index: number; label: string; lang?: string; type?: "native" | "external" }>>([]);
+  const [activeTrack, setActiveTrack] = useState<number>(-1); // -1 = off
+  const [loadingSubLang, setLoadingSubLang] = useState<string | null>(null);
+
+  // pseudo-seek for remuxed streams
   const [seekBase, setSeekBase] = useState(0);
   const [scrub, setScrub] = useState<number | null>(null);
 
   const rawSrc = sources[srcIdx] ?? sources[0];
   const isTranscode = !!rawSrc && rawSrc.includes("/api/transcode");
-  // appending &t= makes the attach effect reload ffmpeg from that timestamp
   const src = isTranscode && seekBase > 0 ? `${rawSrc}&t=${Math.floor(seekBase)}` : rawSrc;
-  const seekable = !isLive; // transcoded streams seek by reloading
+  const seekable = !isLive;
   const total = isTranscode && knownDuration > 0 ? knownDuration : duration;
   const displayCurrent = isTranscode ? seekBase + current : current;
 
-  // reset to the preferred source whenever the candidate list (title) changes
   useEffect(() => {
     setSrcIdx(0);
     setSeekBase(0);
@@ -109,7 +119,7 @@ export function VideoPlayer({
     [sources.length],
   );
 
-  // (re)attach engine when src changes
+  // Engine initialization (hls.js / mp4)
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
@@ -119,8 +129,27 @@ export function VideoPlayer({
     (async () => {
       try {
         engineRef.current?.destroy();
-        engineRef.current = await attach(video, { url: src, ext, isLive });
+        const handle = await attach(video, { url: src, ext, isLive });
         if (cancelled) return;
+        engineRef.current = handle;
+
+        // Extraire les pistes audio native HLS.js si l'instance est disponible
+        const hls = (handle as any)?.hls;
+        if (hls) {
+          hls.on("hlsAudioTracksUpdated", (_: any, data: { audioTracks: any[] }) => {
+            const list = data.audioTracks.map((t, idx) => ({
+              id: idx,
+              label: t.name || t.lang || `Audio ${idx + 1}`,
+            }));
+            setAudioTracks(list);
+            setActiveAudio(hls.audioTrack);
+          });
+
+          hls.on("hlsAudioTrackSwitched", (_: any, data: { id: number }) => {
+            setActiveAudio(data.id);
+          });
+        }
+
         video.play().catch(() => {});
       } catch (e) {
         if (!cancelled) tryFallback((e as Error).message || "Playback failed");
@@ -149,7 +178,7 @@ export function VideoPlayer({
     };
   }, [src, ext, isLive, tryFallback, srcIdx, sources.length]);
 
-  // media element events
+  // Media Element Listeners
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -268,6 +297,15 @@ export function VideoPlayer({
     if (videoRef.current) videoRef.current.playbackRate = s;
   };
 
+  const selectAudioTrack = (index: number) => {
+    const hls = (engineRef.current as any)?.hls;
+    if (hls) {
+      hls.audioTrack = index;
+      setActiveAudio(index);
+    }
+    setAudioMenu(false);
+  };
+
   const loadSubtitleFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -296,14 +334,56 @@ export function VideoPlayer({
     setActiveTrack(idx);
   }, []);
 
+  // Téléchargement / Injection dynamique depuis l'API OpenSubtitles (Arabe, Français, Anglais, Perse)
+  const fetchExternalSub = async (langCode: string, label: string) => {
+    const video = videoRef.current;
+    if (!video || !title) return;
+
+    setLoadingSubLang(langCode);
+    try {
+      const res = await fetch(`/api/subtitles?title=${encodeURIComponent(title)}&lang=${langCode}`);
+      const data = await res.json();
+
+      if (data.url) {
+        let trackEl = video.querySelector(`track[srclang="${langCode}"]`) as HTMLTrackElement;
+        if (!trackEl) {
+          trackEl = document.createElement("track");
+          trackEl.kind = "subtitles";
+          trackEl.label = label;
+          trackEl.srclang = langCode;
+          trackEl.src = data.url;
+          video.appendChild(trackEl);
+        }
+
+        setTimeout(() => {
+          for (let i = 0; i < video.textTracks.length; i++) {
+            if (video.textTracks[i].language === langCode) {
+              selectTrack(i);
+              break;
+            }
+          }
+        }, 300);
+      }
+    } catch (err) {
+      console.error("Impossible de charger les sous-titres externes:", err);
+    } finally {
+      setLoadingSubLang(null);
+      setCapMenu(false);
+    }
+  };
+
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
     const refresh = () => {
-      const list: Array<{ index: number; label: string }> = [];
+      const list: Array<{ index: number; label: string; lang?: string }> = [];
       for (let i = 0; i < v.textTracks.length; i++) {
         const t = v.textTracks[i];
-        list.push({ index: i, label: t.label || t.language || `Track ${i + 1}` });
+        list.push({
+          index: i,
+          label: t.label || t.language || `Track ${i + 1}`,
+          lang: t.language,
+        });
       }
       setTrackList(list);
     };
@@ -363,6 +443,7 @@ export function VideoPlayer({
         ref={videoRef}
         className="absolute inset-0 h-full w-full object-contain"
         playsInline
+        crossOrigin="anonymous"
         onClick={togglePlay}
         onDoubleClick={toggleFs}
       >
@@ -501,9 +582,41 @@ export function VideoPlayer({
           </div>
 
           <div className="ml-auto flex items-center gap-3 sm:gap-4">
+            {/* SÉLECTEUR MULTI-AUDIO (VF / VO / Arabe...) */}
+            {audioTracks.length > 1 && (
+              <div className="relative">
+                <button
+                  onClick={() => { setAudioMenu((v) => !v); setCapMenu(false); setSpeedMenu(false); }}
+                  className="text-white/90 transition-transform hover:scale-110"
+                  title="Audio tracks"
+                >
+                  <Languages className="h-6 w-6" />
+                </button>
+                {audioMenu && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setAudioMenu(false)} />
+                    <div className="absolute bottom-10 right-0 z-20 max-h-72 w-48 overflow-y-auto rounded-xl panel py-1 text-sm">
+                      <p className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-fog-500">Audio Language</p>
+                      {audioTracks.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => selectAudioTrack(t.id)}
+                          className="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-white/10"
+                        >
+                          <span className="truncate">{t.label}</span>
+                          {activeAudio === t.id && <Check className="h-3.5 w-3.5 text-iris-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* SÉLECTEUR SOUS-TITRES (NATIVE + OPENSUBTITLES) */}
             <div className="relative">
               <button
-                onClick={() => setCapMenu((v) => !v)}
+                onClick={() => { setCapMenu((v) => !v); setAudioMenu(false); setSpeedMenu(false); }}
                 className={cn("transition-transform hover:scale-110", activeTrack >= 0 ? "text-iris-400" : "text-white/90")}
                 title="Subtitles (c)"
               >
@@ -512,8 +625,8 @@ export function VideoPlayer({
               {capMenu && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setCapMenu(false)} />
-                  <div className="absolute bottom-10 right-0 z-20 max-h-72 w-56 overflow-y-auto rounded-xl panel py-1 text-sm">
-                    <p className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-fog-500">Subtitles</p>
+                  <div className="absolute bottom-10 right-0 z-20 max-h-80 w-64 overflow-y-auto rounded-xl panel py-1 text-sm">
+                    <p className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-fog-500">Embedded Subtitles</p>
                     <button
                       onClick={() => { selectTrack(-1); setCapMenu(false); }}
                       className="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-white/10"
@@ -531,9 +644,22 @@ export function VideoPlayer({
                         {activeTrack === t.index && <Check className="h-3.5 w-3.5 shrink-0 text-iris-400" />}
                       </button>
                     ))}
-                    {trackList.length === 0 && (
-                      <p className="px-3 py-1.5 text-xs text-fog-500">No embedded captions found.</p>
-                    )}
+
+                    <div className="my-1 h-px bg-white/10" />
+                    <p className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-fog-500">Auto Subtitles (OpenSub)</p>
+
+                    {AUTO_SUB_LANGS.map((item) => (
+                      <button
+                        key={item.code}
+                        onClick={() => fetchExternalSub(item.code, item.label)}
+                        disabled={loadingSubLang === item.code}
+                        className="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-white/10 text-xs text-indigo-300"
+                      >
+                        <span>{item.label}</span>
+                        {loadingSubLang === item.code && <Loader2 className="h-3 w-3 animate-spin text-iris-400" />}
+                      </button>
+                    ))}
+
                     <div className="my-1 h-px bg-white/10" />
                     <button
                       onClick={() => { subFileRef.current?.click(); setCapMenu(false); }}
@@ -549,7 +675,7 @@ export function VideoPlayer({
             {!isLive && (
               <div className="relative">
                 <button
-                  onClick={() => setSpeedMenu((v) => !v)}
+                  onClick={() => { setSpeedMenu((v) => !v); setCapMenu(false); setAudioMenu(false); }}
                   className={cn("flex items-center gap-1 transition-transform hover:scale-110", speed !== 1 ? "text-iris-400" : "text-white/90")}
                   title="Playback speed"
                 >
