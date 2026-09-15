@@ -1,78 +1,29 @@
 "use client";
 
 import { TopBar } from "@/components/layout/TopBar";
-import { FeaturedTile, NavTile, ContinueTile } from "@/components/catalog/Bento";
-import { useVodStreams } from "@/lib/hooks";
-import { useLibrary } from "@/store/library";
-import { useTranslation } from "@/lib/useTranslation";
+import { CatalogBrowser } from "@/components/catalog/CatalogBrowser";
+import { useSeriesCategories, useSeriesStreams } from "@/lib/hooks";
+import type { SeriesItem } from "@/lib/xtream/types";
 
-export default function HomePage() {
-  const { t } = useTranslation();
-  const { data: movies = [] } = useVodStreams();
-  const library = useLibrary();
-
-  // Extraction propre des éléments en cours de lecture
-  const progressList = Array.isArray(library.progress)
-    ? library.progress
-    : Object.values(library.progress ?? {});
-
-  // Préparation des éléments à l'affiche (Featured)
-  const heroItems = movies.slice(0, 5).map((m) => ({
-    id: String(m.stream_id),
-    title: m.name,
-    backdrop: m.stream_icon,
-    rating: typeof m.rating === "number" ? m.rating : parseFloat(m.rating) || 0,
-    year: m.added ? String(m.added) : undefined,
-    detailHref: `/watch?type=movie&id=${m.stream_id}&ext=${m.container_extension || "mp4"}&title=${encodeURIComponent(m.name)}`,
-    playHref: `/watch?type=movie&id=${m.stream_id}&ext=${m.container_extension || "mp4"}&title=${encodeURIComponent(m.name)}`,
-  }));
+export default function SeriesPage() {
+  const { data: categories = [] } = useSeriesCategories();
 
   return (
     <>
-      <TopBar title={t("Nav.home")} />
-      <main className="p-4 md:p-6 space-y-6 max-w-[1600px] mx-auto">
-        <h1 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
-          {t("Home.heroTitle")}
-        </h1>
-
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-          {/* Tile Featured Principale */}
-          <FeaturedTile items={heroItems} className="col-span-1 md:col-span-8 min-h-[380px]" />
-
-          {/* Navigation Rapide */}
-          <div className="col-span-1 md:col-span-4 grid grid-cols-2 gap-4">
-            <NavTile
-              href="/movies"
-              title={t("Home.movies")}
-              subtitle={t("Home.browseMovies")}
-              icon="film"
-              tint="iris"
-              className="col-span-2"
-            />
-            <NavTile
-              href="/live"
-              title={t("Home.liveTv")}
-              subtitle={t("Home.channelsEpg")}
-              icon="live"
-              tint="mint"
-              className="col-span-1"
-            />
-            <NavTile
-              href="/favourites"
-              title={t("Home.myList")}
-              subtitle={t("Home.savedLater")}
-              icon="heart"
-              tint="iris"
-              className="col-span-1"
-            />
-          </div>
-
-          {/* Reprendre la lecture */}
-          {progressList.length > 0 && (
-            <ContinueTile items={progressList} className="col-span-1 md:col-span-12" />
-          )}
-        </div>
-      </main>
+      <TopBar title="Series" />
+      <CatalogBrowser<SeriesItem>
+        sectionKey="series"
+        categories={categories}
+        useItems={(catId) => useSeriesStreams(catId)}
+        toPoster={(item) => ({
+          id: item.series_id,
+          name: item.name,
+          poster: item.cover,
+          rating: item.rating,
+          year: item.releaseDate,
+        })}
+        hrefFor={(item) => `/series/${item.series_id}`}
+      />
     </>
   );
 }
