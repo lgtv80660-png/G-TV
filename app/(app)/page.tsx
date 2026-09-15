@@ -2,7 +2,7 @@
 
 import { TopBar } from "@/components/layout/TopBar";
 import { CatalogBrowser } from "@/components/catalog/CatalogBrowser";
-import { useSeriesCategories, useSeriesStreams } from "@/lib/hooks";
+import { useSeriesCategories, useSeries } from "@/lib/hooks";
 import type { SeriesItem } from "@/lib/xtream/types";
 
 export default function SeriesPage() {
@@ -14,7 +14,7 @@ export default function SeriesPage() {
       <CatalogBrowser<SeriesItem>
         sectionKey="series"
         categories={categories}
-        useItems={(catId) => useSeriesStreams(catId)}
+        useItems={(catId) => useSeries(catId)}
         toPoster={(item) => ({
           id: item.series_id,
           name: item.name,
