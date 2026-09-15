@@ -111,8 +111,25 @@ export function useSeries(categoryId?: string) {
   return { data, loading };
 }
 
-// Alias pour compatibilité avec app/series/page.tsx
 export const useSeriesList = useSeries;
+
+// Hook manquant qui faisait planter l'application
+export function useSeriesInfo(id?: string) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    api
+      .seriesInfo(id)
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  return { data, loading };
+}
 
 export function useEPG(streamId?: string | number) {
   const [data, setData] = useState<any>(null);
