@@ -5,17 +5,18 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, ChevronDown, Search, LayoutGrid } from "lucide-react";
 import type { Category } from "@/lib/xtream/types";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/useTranslation";
 
-/** Glass combobox: a searchable, scrollable category list (replaces chip rows). */
 export function CategoryPicker({
   categories,
   value,
   onChange,
 }: {
   categories: Category[];
-  value: string; // "all" | category_id
+  value: string;
   onChange: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -23,8 +24,8 @@ export function CategoryPicker({
 
   const current =
     value === "all" || !value
-      ? "All categories"
-      : categories.find((c) => c.category_id === value)?.category_name || "Category";
+      ? t("Catalog.allCategories")
+      : categories.find((c) => c.category_id === value)?.category_name || t("Catalog.categories");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -79,7 +80,7 @@ export function CategoryPicker({
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search categories…"
+                placeholder={t("Catalog.searchCategory")}
                 className="w-full bg-transparent text-sm placeholder:text-fog-500 focus:outline-none"
               />
               {categories.length > 0 && (
@@ -88,7 +89,7 @@ export function CategoryPicker({
             </div>
 
             <div className="max-h-[min(60vh,360px)] overflow-y-auto p-1.5">
-              <Row label="All categories" active={value === "all" || !value} onClick={() => pick("all")} />
+              <Row label={t("Catalog.allCategories")} active={value === "all" || !value} onClick={() => pick("all")} />
               {filtered.map((c) => (
                 <Row
                   key={c.category_id}
@@ -98,7 +99,7 @@ export function CategoryPicker({
                 />
               ))}
               {filtered.length === 0 && (
-                <p className="px-3 py-6 text-center text-sm text-fog-500">No matching categories.</p>
+                <p className="px-3 py-6 text-center text-sm text-fog-500">{t("Catalog.noMatchingCat")}</p>
               )}
             </div>
           </motion.div>
