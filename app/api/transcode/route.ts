@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { Readable } from "node:stream";
 import { requireSession } from "@/lib/session";
 import { locatePlayable } from "@/lib/xtream/locate";
 import type { StreamKind } from "@/lib/xtream/types";
@@ -11,8 +10,9 @@ const UA = "VLC/3.0.20 LibVLC/3.0.20";
 const FFMPEG = process.env.FFMPEG_PATH || "ffmpeg";
 
 /**
- * Remuxage FFmpeg à la volée.
- * Copie le flux vidéo (ultra-rapide, sans charge CPU excessive) et convertit l'audio AC-3/EAC-3 en AAC.
+ * Route de transcodage dynamique via FFmpeg.
+ * Copie la piste vidéo sans ré-encodage (très léger en CPU)
+ * et convertit l'audio AC-3/EAC-3/DTS en AAC stéréo universel pour navigateur web.
  */
 export async function GET(req: Request) {
   let creds;
@@ -43,9 +43,9 @@ export async function GET(req: Request) {
     "-user_agent", UA,
     ...(start > 0 ? ["-ss", String(start)] : []),
     "-i", input,
-    "-c:v", "copy", // Conserve la vidéo sans re-encodage
-    "-c:a", "aac",  // Force l'audio en AAC pour le navigateur
-    "-ac", "2",
+    "-c:v", "copy", // Ne touche pas à la vidéo (ultra fluide)
+    "-c:a", "aac",  // Force le codec audio AAC compatible HTML5
+    "-ac", "2",     // Redimensionne en 2 canaux stéréo
     "-movflags", "frag_keyframe+empty_moov+default_base_moof",
     "-f", "mp4",
     "pipe:1",
@@ -58,15 +58,40 @@ export async function GET(req: Request) {
     const s = String(d).trim();
     if (s) console.log(`[TRANSCODE] ${type}/${id} ffmpeg: ${s}`);
   });
-  ff.on("error", (e) => console.log(`[TRANSCODE] ${type}/${id} spawn error: ${e.message}`));
 
-  const kill = () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      ff.stdout.on("data", (chunk) => {
+        try {
+          // Empêche l'erreur si la connexion a été coupée par le client
+          if (controller.desiredSize !== null) {
+            controller.enqueue(chunk);
+          }
+        } catch {
+          // Annulation silencieuse
+        }
+      });
+
+      ff.stdout.on("end", () => {
+        try {
+          controller.close();
+        } catch {}
+      });
+
+      ff.on("error", (err) => {
+        try {
+          controller.error(err);
+        } catch {}
+      });
+    },
+    cancel() {
+      if (!ff.killed) ff.kill("SIGKILL");
+    },
+  });
+
+  req.signal.addEventListener("abort", () => {
     if (!ff.killed) ff.kill("SIGKILL");
-  };
-  req.signal.addEventListener("abort", kill);
-  ff.on("close", () => req.signal.removeEventListener("abort", kill));
-
-  const stream = Readable.toWeb(ff.stdout) as unknown as ReadableStream;
+  });
 
   return new Response(stream, {
     headers: {
