@@ -304,11 +304,16 @@ export default function SeriesDetailPage() {
                   <VideoPlayer
                     key={activeEpisode.id}
                     sources={[
+                      // 1. Forcer le passage par le transcodeur FFmpeg sur Railway (Convertit Dolby AC-3 -> AAC)
+                      `/api/transcode?type=series&id=${activeEpisode.id}&ext=${
+                        activeEpisode.container_extension || "mkv"
+                      }`,
+                      // 2. Stream direct en fallback
                       `/api/stream?type=series&id=${activeEpisode.id}&ext=${
                         activeEpisode.container_extension || "mp4"
                       }`,
                     ]}
-                    ext={activeEpisode.container_extension || "mp4"}
+                    ext="mp4"
                     isLive={false}
                     title={`${title} - S${activeEpisode.season || activeSeasonKey}E${activeEpisode.episode_num}`}
                   />
