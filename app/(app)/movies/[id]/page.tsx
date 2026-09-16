@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
 /**
- * Extraction de la durée en secondes
+ * Extraction robuste de la durée pour corriger la barre d'avancement sur Railway.
  */
 function extractDurationInSeconds(data: any): number {
   if (!data) return 0;
@@ -40,6 +40,24 @@ function extractDurationInSeconds(data: any): number {
   }
 
   return 0;
+}
+
+/**
+ * Génère la requête YouTube dans la langue active de l'application
+ */
+function getTrailerSearchQuery(title: string, year: string, lang: string = "fr"): string {
+  const cleanTitle = title.trim();
+  const yearStr = year ? ` ${year}` : "";
+
+  switch (lang.toLowerCase()) {
+    case "ar":
+      return encodeURIComponent(`${cleanTitle}${yearStr} اعلان مترجم`);
+    case "fr":
+      return encodeURIComponent(`${cleanTitle}${yearStr} bande annonce officielle vf`);
+    case "en":
+    default:
+      return encodeURIComponent(`${cleanTitle}${yearStr} official trailer`);
+  }
 }
 
 // Carte d'acteur 3D Flip
@@ -117,6 +135,9 @@ export default function MovieDetailPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
 
+  // Détection de la langue active (remplacer si tu utilises un context/store de langue)
+  const currentLang = typeof window !== "undefined" ? localStorage.getItem("app_lang") || "fr" : "fr";
+
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
 
@@ -176,11 +197,20 @@ export default function MovieDetailPage() {
   const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
   const isFavorite = isFav("movie", Number(streamId));
   const movieTitle = info.name || info.title || "Film";
+  const movieYear = info.releasedate?.slice(0, 4) || info.year || "";
   
-  // Si le provider fournit un ID YouTube, on l'utilise, sinon on crée un lien de recherche dynamique YouTube
   const youtubeTrailerId = info.youtube_trailer || vodData.youtube_trailer;
-  const trailerSearchQuery = encodeURIComponent(`${movieTitle} bande annonce fr`);
 
+  const handleOpenTrailer = () => {
+    if (youtubeTrailerId) {
+      setShowTrailer(true);
+    } else {
+      const query = getTrailerSearchQuery(movieTitle, movieYear, currentLang);
+      window.open(`https://www.youtube.com/results?search_query=${query}`, "_blank");
+    }
+  };
+
+  // Extraction propre des acteurs
   const rawCast = info.cast || vodData.cast || info.actors || "";
   const castList = typeof rawCast === "string"
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
@@ -241,7 +271,7 @@ export default function MovieDetailPage() {
 
           <div className="space-y-2 sm:space-y-3 flex-1">
             <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight text-white">
-              {movieTitle} {info.releasedate || info.year ? `(${info.releasedate?.slice(0, 4) || info.year})` : ""}
+              {movieTitle} {movieYear ? `(${movieYear})` : ""}
             </h1>
 
             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 font-medium">
@@ -258,7 +288,7 @@ export default function MovieDetailPage() {
               {info.genre && <span className="text-zinc-400">• {info.genre}</span>}
             </div>
 
-            {/* Boutons Play et Bande-Annonce GARANTIS */}
+            {/* Boutons Play et Bande-Annonce */}
             {!isPlaying && (
               <div className="flex items-center gap-3 pt-2">
                 <button
@@ -270,8 +300,8 @@ export default function MovieDetailPage() {
                 </button>
 
                 <button
-                  onClick={() => setShowTrailer(true)}
-                  className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs px-4 py-2.5 rounded-xl border border-white/10 transition-all"
+                  onClick={handleOpenTrailer}
+                  className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs px-4 py-2.5 rounded-xl border border-white/10 transition-all hover:scale-105"
                 >
                   <Youtube className="w-4 h-4 text-red-500 fill-current" />
                   Bande-annonce
@@ -282,8 +312,8 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
-      {/* Modale Bande-Annonce YouTube */}
-      {showTrailer && (
+      {/* Modale d'intégration YouTube directe */}
+      {showTrailer && youtubeTrailerId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
           <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
             <button
@@ -293,11 +323,7 @@ export default function MovieDetailPage() {
               <X className="w-5 h-5" />
             </button>
             <iframe
-              src={
-                youtubeTrailerId
-                  ? `https://www.youtube.com/embed/${youtubeTrailerId}?autoplay=1`
-                  : `https://www.youtube.com/embed?listType=search&list=${trailerSearchQuery}&autoplay=1`
-              }
+              src={`https://www.youtube.com/embed/${youtubeTrailerId}?autoplay=1`}
               title="Bande annonce"
               className="w-full h-full border-0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
