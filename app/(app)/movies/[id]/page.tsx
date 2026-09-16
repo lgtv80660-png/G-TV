@@ -9,19 +9,15 @@ import { useLibrary } from "@/store/library";
 import { api } from "@/lib/api";
 import { ratingNum, yearFrom, cleanName } from "@/lib/utils";
 
-// 1. Extraction 100% autonome et sécurisée du titre
 function getCleanTitle(data: any): string {
   if (!data) return "Film";
   const info = data?.info || {};
   const vod = data?.movie_data || {};
-  
   const rawTitle = info.name || vod.name || info.title || vod.title || info.o_name || "Film";
-  
   const cleaned = String(rawTitle).replace(/\s*\(\d{4}\)\s*$/g, "").trim();
   return cleaned ? cleanName(cleaned) : "Film";
 }
 
-// 2. Extraction ultra-robuste de la durée en secondes
 function getDurationInSeconds(data: any): number {
   if (!data) return 0;
   const info = data?.info || {};
@@ -36,7 +32,6 @@ function getDurationInSeconds(data: any): number {
   const strDur = info.duration || vod.duration || info.runtime || vod.runtime;
   if (strDur) {
     const cleanStr = String(strDur).toLowerCase().replace(/min/g, "").trim();
-    
     if (cleanStr.includes(":")) {
       const parts = cleanStr.split(":").map(Number);
       if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -46,7 +41,6 @@ function getDurationInSeconds(data: any): number {
       if (!isNaN(num)) return num < 300 ? num * 60 : num;
     }
   }
-  
   return 0;
 }
 
@@ -121,10 +115,11 @@ const FlipActorCard = ({ name }: { name: string }) => {
 
 export default function MovieDetailPage() {
   const params = useParams();
-  const id = params?.id as string;
+  const id = params?.id ? String(params.id) : null;
 
   const [movieInfo, setMovieInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [activeMedia, setActiveMedia] = useState<"movie" | "trailer" | null>(null);
   const [currentLang, setCurrentLang] = useState("fr");
   const [tmdbTrailerKey, setTmdbTrailerKey] = useState<string | null>(null);
@@ -144,24 +139,32 @@ export default function MovieDetailPage() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
+    setError(false);
     api
       .vodInfo(id)
-      .then((data) => setMovieInfo(data))
-      .catch(console.error)
+      .then((data) => {
+        if (data) {
+          setMovieInfo(data);
+        } else {
+          setError(true);
+        }
+      })
+      .catch((err) => {
+        console.error("Erreur API vodInfo:", err);
+        setError(true);
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
   const handleFullscreenLandscape = async () => {
     const elem = playerContainerRef.current;
     if (!elem) return;
-
     try {
       if (elem.requestFullscreen) {
         await elem.requestFullscreen();
       } else if ((elem as any).webkitRequestFullscreen) {
         await (elem as any).webkitRequestFullscreen();
       }
-
       if (window.screen?.orientation && "lock" in window.screen.orientation) {
         await (window.screen.orientation as any).lock("landscape").catch(() => {});
       }
@@ -178,7 +181,7 @@ export default function MovieDetailPage() {
     lastTapRef.current = now;
   };
 
-  if (loading || !movieInfo) {
+  if (loading || !id) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-[#0b0c10]">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
@@ -186,10 +189,21 @@ export default function MovieDetailPage() {
     );
   }
 
+  if (error || !movieInfo) {
+    return (
+      <div className="flex flex-col justify-center items-center min-h-screen bg-[#0b0c10] text-white space-y-4">
+        <p className="text-red-400 font-semibold">Impossible de charger les informations du film.</p>
+        <Link href="/movies" className="px-4 py-2 bg-indigo-600 rounded-lg text-xs hover:bg-indigo-500 transition-colors">
+          Retour aux films
+        </Link>
+      </div>
+    );
+  }
+
   const info = movieInfo?.info || movieInfo?.movie_data || {};
   const vodData = movieInfo?.movie_data || {};
-  const streamId = vodData.stream_id || info.stream_id || id;
-  const containerExt = (vodData.container_extension || info.container_extension || "mp4").toLowerCase();
+  const streamId = vodData?.stream_id || info?.stream_id || id;
+  const containerExt = String(vodData?.container_extension || info?.container_extension || "mp4").toLowerCase();
 
   const movieTitle = getCleanTitle(movieInfo);
   const movieDurationSec = getDurationInSeconds(movieInfo);
@@ -207,34 +221,11 @@ export default function MovieDetailPage() {
   const isNativeSupported = ["mp4", "m3u8"].includes(containerExt);
 
   const movieSources = isNativeSupported
-    ? [
-        `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`
-      ]
-    : [
-        `/api/transcode?type=movie&id=${streamId}&ext=${containerExt || "mkv"}`
-      ];
+    ? [`/api/stream?type=movie&id=${streamId}&ext=${containerExt}`]
+    : [`/api/transcode?type=movie&id=${streamId}&ext=${containerExt || "mkv"}`];
 
   const backdropUrl = info?.backdrop_path?.[0] || info?.backdrop || info?.cover_big || info?.movie_image;
   const posterUrl = info?.movie_image || info?.cover_big || info?.cover;
-
-  useEffect(() => {
-    if (!movieTitle || movieTitle.toLowerCase() === "film") return;
-
-    let isMounted = true;
-    const fetchTmdbTrailer = async () => {
-      try {
-        const res = await fetch(
-          `/api/tmdb-trailer?title=${encodeURIComponent(movieTitle)}&year=${year || ""}&tmdbId=${tmdbId || ""}&lang=${currentLang}`
-        );
-        const data = await res.json();
-        if (isMounted && data?.key) setTmdbTrailerKey(data.key);
-      } catch (err) {
-        console.error("Erreur TMDB trailer:", err);
-      }
-    };
-    fetchTmdbTrailer();
-    return () => { isMounted = false; };
-  }, [movieTitle, year, tmdbId, currentLang]);
 
   const finalTrailerKey = tmdbTrailerKey || info?.youtube_trailer || vodData?.youtube_trailer;
   const youtubeEmbedUrl = finalTrailerKey
