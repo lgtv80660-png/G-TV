@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
 /**
- * Extrait et convertit la durée en secondes (compatibilité Transcode Railway).
+ * Extrait la durée complète en secondes pour le transcodage Railway.
  */
 function extractDurationInSeconds(data: any): number {
   if (!data) return 0;
@@ -53,7 +53,8 @@ function extractDurationInSeconds(data: any): number {
   return 0;
 }
 
-const FlipActorCard = ({ name }: { name: string }) => {
+// Carte d'acteur 3D Flip (Identique au composant Series)
+function FlipActorCard({ name }: { name: string }) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
   const [isFlipped, setIsFlipped] = useState(false);
@@ -86,39 +87,39 @@ const FlipActorCard = ({ name }: { name: string }) => {
           setIsFlipped(!isFlipped);
         }
       }}
-      className="group perspective w-32 sm:w-36 h-48 sm:h-52 flex-shrink-0 cursor-pointer select-none focus:outline-none"
+      className="group perspective w-24 sm:w-28 h-36 sm:h-40 flex-shrink-0 cursor-pointer select-none focus:outline-none"
     >
       <div
-        className={`relative w-full h-full rounded-2xl transition-transform duration-500 transform-style-3d ${
+        className={`relative w-full h-full rounded-xl transition-transform duration-500 transform-style-3d ${
           isFlipped ? "rotate-y-180" : "group-hover:scale-105"
         }`}
       >
-        <div className="absolute inset-0 w-full h-full rounded-2xl overflow-hidden bg-[#181a24] border border-white/10 shadow-lg backface-hidden flex flex-col justify-end">
+        <div className="absolute inset-0 w-full h-full rounded-xl overflow-hidden bg-[#181a24] border border-white/10 shadow-lg backface-hidden flex flex-col justify-end">
           {photoUrl ? (
             <img src={photoUrl} alt={name} className="absolute inset-0 w-full h-full object-cover" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center bg-indigo-950/40 text-indigo-400">
-              <User className="w-10 h-10" />
+              <User className="w-6 h-6" />
             </div>
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-          <div className="relative z-10 p-2.5 flex items-center justify-between">
-            <span className="text-xs font-bold text-white line-clamp-1">{name}</span>
-            <Info className="w-3.5 h-3.5 text-indigo-400 opacity-70 flex-shrink-0" />
+          <div className="relative z-10 p-1.5 flex items-center justify-between">
+            <span className="text-[10px] font-bold text-white line-clamp-1">{name}</span>
+            <Info className="w-2.5 h-2.5 text-indigo-400 opacity-70 flex-shrink-0" />
           </div>
         </div>
 
-        <div className="absolute inset-0 w-full h-full rounded-2xl p-3 bg-gradient-to-br from-indigo-950 to-[#12141c] border border-indigo-500/40 text-white backface-hidden rotate-y-180 flex flex-col justify-between shadow-xl">
-          <div className="space-y-1 overflow-hidden">
-            <p className="text-[11px] font-bold text-indigo-300 line-clamp-1">{name}</p>
-            <p className="text-[10px] text-zinc-300 leading-snug line-clamp-5">{bio}</p>
+        <div className="absolute inset-0 w-full h-full rounded-xl p-2 bg-gradient-to-br from-indigo-950 to-[#12141c] border border-indigo-500/40 text-white backface-hidden rotate-y-180 flex flex-col justify-between shadow-xl">
+          <div className="space-y-0.5 overflow-hidden">
+            <p className="text-[9px] font-bold text-indigo-300 line-clamp-1">{name}</p>
+            <p className="text-[8px] text-zinc-300 leading-tight line-clamp-4">{bio}</p>
           </div>
-          <span className="text-[9px] text-zinc-500 italic self-end">Retourner</span>
+          <span className="text-[7px] text-zinc-500 italic self-end">Retourner</span>
         </div>
       </div>
     </div>
   );
-};
+}
 
 export default function MovieDetailPage() {
   const { id } = useParams();
@@ -188,7 +189,7 @@ export default function MovieDetailPage() {
   const movieTitle = info.name || info.title || "Film";
   const youtubeTrailerId = info.youtube_trailer || vodData.youtube_trailer;
 
-  // Extraction robuste de la liste des acteurs
+  // Extraction propre des acteurs (champs info.cast, vodData.cast ou info.actors)
   const rawCast = info.cast || vodData.cast || info.actors || "";
   const castList = typeof rawCast === "string"
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
@@ -267,8 +268,17 @@ export default function MovieDetailPage() {
             </div>
 
             {!isPlaying && (
-              <div className="flex items-center gap-3 pt-1">
-                {/* Bouton Bande-Annonce */}
+              <div className="flex items-center gap-3 pt-2">
+                {/* 1. Bouton Play */}
+                <button
+                  onClick={() => setIsPlaying(true)}
+                  className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:scale-105"
+                >
+                  <Play className="w-4 h-4 fill-current translate-x-0.5" />
+                  Play
+                </button>
+
+                {/* 2. Bouton Bande-annonce (si lien YouTube disponible) */}
                 {youtubeTrailerId && (
                   <button
                     onClick={() => setShowTrailer(true)}
@@ -278,24 +288,15 @@ export default function MovieDetailPage() {
                     Bande-annonce
                   </button>
                 )}
-
-                {/* Bouton Play */}
-                <button
-                  onClick={() => setIsPlaying(true)}
-                  className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:scale-105"
-                >
-                  <Play className="w-4 h-4 fill-current translate-x-0.5" />
-                  Play
-                </button>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Modale Bande-Annonce YouTube */}
+      {/* Modale d'affichage de la Bande-Annonce YouTube */}
       {showTrailer && youtubeTrailerId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
           <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
             <button
               onClick={() => setShowTrailer(false)}
@@ -362,7 +363,7 @@ export default function MovieDetailPage() {
           </div>
         )}
 
-        {/* Synopsis & Casting */}
+        {/* Synopsis & Casting 3D */}
         <div className={isPlaying ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
           <div className="bg-[#12141c] border border-white/5 rounded-2xl p-4 sm:p-6 space-y-3">
             <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
@@ -384,8 +385,8 @@ export default function MovieDetailPage() {
               <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                 <User className="w-4 h-4 text-indigo-400" /> Casting / Acteurs
               </h3>
-              <div className="flex gap-3 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-indigo-600 scrollbar-track-transparent">
-                {castList.map((actor: string, idx: number) => (
+              <div className="flex flex-wrap gap-2.5 pt-1">
+                {castList.slice(0, 8).map((actor: string, idx: number) => (
                   <FlipActorCard key={idx} name={actor} />
                 ))}
               </div>
