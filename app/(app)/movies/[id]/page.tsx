@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
 /**
- * Extrait la durée complète en secondes pour le transcodage Railway.
+ * Extraction robuste de la durée pour corriger le problème 0:06
  */
 function extractDurationInSeconds(data: any): number {
   if (!data) return 0;
@@ -17,43 +17,37 @@ function extractDurationInSeconds(data: any): number {
   const info = data.info || {};
   const vodData = data.movie_data || {};
 
-  const secsCandidates = [
-    info.duration_secs,
-    vodData.duration_secs,
-    info.length_secs,
-    vodData.length_secs,
-  ];
+  // 1. Chercher si la durée est déjà en secondes (doit être > 300s pour un film)
+  const secsCandidates = [info.duration_secs, vodData.duration_secs, info.length_secs, vodData.length_secs];
   for (const c of secsCandidates) {
-    if (c && !isNaN(Number(c)) && Number(c) > 0) return Number(c);
+    if (c && !isNaN(Number(c)) && Number(c) > 300) return Number(c);
   }
 
-  const strCandidates = [
-    info.duration,
-    vodData.duration,
-    info.runtime,
-    vodData.runtime,
-  ];
+  // 2. Chercher les formats texte (ex: "01:45:00", "105 min", "105")
+  const strCandidates = [info.duration, vodData.duration, info.runtime, vodData.runtime];
   
   for (const raw of strCandidates) {
     if (!raw) continue;
     const str = String(raw).trim().toLowerCase().replace("min", "").trim();
     
+    // Format HH:MM:SS ou MM:SS
     if (str.includes(":")) {
       const parts = str.split(":").map((p) => parseInt(p, 10) || 0);
       if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      if (parts.length === 2) return parts[0] * 3600 + parts[1] * 60; // "01:45" = 1h45
     }
 
+    // Nombre simple : si < 300, ce sont des minutes -> convertir en secondes
     const num = parseInt(str, 10);
     if (!isNaN(num) && num > 0) {
-      return num > 300 ? num : num * 60;
+      return num < 300 ? num * 60 : num;
     }
   }
 
   return 0;
 }
 
-// Carte d'acteur 3D Flip (Identique au composant Series)
+// Carte d'acteur 3D Flip (Même style que les séries)
 function FlipActorCard({ name }: { name: string }) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
@@ -157,7 +151,7 @@ export default function MovieDetailPage() {
         await (window.screen.orientation as any).lock("landscape").catch(() => {});
       }
     } catch (err) {
-      console.error("Erreur passage Plein Écran:", err);
+      console.error("Erreur Plein Écran:", err);
     }
   };
 
@@ -189,7 +183,7 @@ export default function MovieDetailPage() {
   const movieTitle = info.name || info.title || "Film";
   const youtubeTrailerId = info.youtube_trailer || vodData.youtube_trailer;
 
-  // Extraction propre des acteurs (champs info.cast, vodData.cast ou info.actors)
+  // Récupération multi-champs du casting
   const rawCast = info.cast || vodData.cast || info.actors || "";
   const castList = typeof rawCast === "string"
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
@@ -267,9 +261,9 @@ export default function MovieDetailPage() {
               {info.genre && <span className="text-zinc-400">• {info.genre}</span>}
             </div>
 
-            {!isPlaying && (
-              <div className="flex items-center gap-3 pt-2">
-                {/* 1. Bouton Play */}
+            {/* Boutons Play et Bande-Annonce */}
+            <div className="flex items-center gap-3 pt-2">
+              {!isPlaying && (
                 <button
                   onClick={() => setIsPlaying(true)}
                   className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:scale-105"
@@ -277,24 +271,23 @@ export default function MovieDetailPage() {
                   <Play className="w-4 h-4 fill-current translate-x-0.5" />
                   Play
                 </button>
+              )}
 
-                {/* 2. Bouton Bande-annonce (si lien YouTube disponible) */}
-                {youtubeTrailerId && (
-                  <button
-                    onClick={() => setShowTrailer(true)}
-                    className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs px-4 py-2.5 rounded-xl border border-white/10 transition-all"
-                  >
-                    <Youtube className="w-4 h-4 text-red-500 fill-current" />
-                    Bande-annonce
-                  </button>
-                )}
-              </div>
-            )}
+              {youtubeTrailerId && (
+                <button
+                  onClick={() => setShowTrailer(true)}
+                  className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs px-4 py-2.5 rounded-xl border border-white/10 transition-all"
+                >
+                  <Youtube className="w-4 h-4 text-red-500 fill-current" />
+                  Bande-annonce
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Modale d'affichage de la Bande-Annonce YouTube */}
+      {/* Modale Bande-Annonce */}
       {showTrailer && youtubeTrailerId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
           <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
