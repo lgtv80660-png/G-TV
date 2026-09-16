@@ -4,20 +4,14 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   PictureInPicture2, Loader2, AlertTriangle, SkipForward, ArrowLeft,
-  RotateCcw, RotateCw, Captions, Gauge, Check, Upload, Languages,
+  RotateCcw, RotateCw, Captions, Gauge, Check, Upload,
 } from "lucide-react";
 import { attach, type EngineHandle } from "@/lib/player/engine";
 import { formatTime, cn } from "@/lib/utils";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
-const AUTO_SUB_LANGS = [
-  { code: "ar", label: "العربية (Arabe)" },
-  { code: "fr", label: "Français" },
-  { code: "en", label: "English" },
-  { code: "fa", label: "فارسی (Perse)" },
-];
-
+/** Convert SubRip (.srt) text to WebVTT so the browser can render it. */
 function srtToVtt(text: string): string {
   const body = text
     .replace(/\r+/g, "")
@@ -40,6 +34,7 @@ export function VideoPlayer({
   subtitles = [],
   knownDuration = 0,
 }: {
+  /** Ordered candidate URLs — first is tried, next used on failure (direct → proxy). */
   sources: string[];
   ext: string;
   isLive: boolean;
@@ -51,7 +46,9 @@ export function VideoPlayer({
   onBack?: () => void;
   onProgress?: (position: number, duration: number, poster?: string) => void;
   onEnded?: () => void;
+  /** Provider-supplied subtitle tracks (proxied .vtt URLs). */
   subtitles?: Array<{ label: string; src: string; lang?: string }>;
+  /** Real runtime (s) from metadata — used when a remuxed stream has no duration. */
   knownDuration?: number;
 }) {
   const extSubs = subtitles;
@@ -76,25 +73,22 @@ export function VideoPlayer({
   const [subUrl, setSubUrl] = useState<string | null>(null);
   const [subName, setSubName] = useState<string | null>(null);
   const [capMenu, setCapMenu] = useState(false);
-  const [audioMenu, setAudioMenu] = useState(false);
+  const [trackList, setTrackList] = useState<Array<{ index: number; label: string }>>([]);
+  const [activeTrack, setActiveTrack] = useState<number>(-1); // -1 = off
 
-  const [audioTracks, setAudioTracks] = useState<Array<{ id: number; label: string }>>([]);
-  const [activeAudio, setActiveAudio] = useState<number>(0);
-
-  const [trackList, setTrackList] = useState<Array<{ index: number; label: string; lang?: string }>>([]);
-  const [activeTrack, setActiveTrack] = useState<number>(-1);
-  const [loadingSubLang, setLoadingSubLang] = useState<string | null>(null);
-
+  // pseudo-seek for remuxed streams: reload ffmpeg from an offset
   const [seekBase, setSeekBase] = useState(0);
   const [scrub, setScrub] = useState<number | null>(null);
 
   const rawSrc = sources[srcIdx] ?? sources[0];
   const isTranscode = !!rawSrc && rawSrc.includes("/api/transcode");
+  // appending &t= makes the attach effect reload ffmpeg from that timestamp
   const src = isTranscode && seekBase > 0 ? `${rawSrc}&t=${Math.floor(seekBase)}` : rawSrc;
-  const seekable = !isLive;
+  const seekable = !isLive; // transcoded streams seek by reloading
   const total = isTranscode && knownDuration > 0 ? knownDuration : duration;
   const displayCurrent = isTranscode ? seekBase + current : current;
 
+  // reset to the preferred source whenever the candidate list (title) changes
   useEffect(() => {
     setSrcIdx(0);
     setSeekBase(0);
@@ -115,6 +109,7 @@ export function VideoPlayer({
     [sources.length],
   );
 
+  // (re)attach engine when src changes
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
@@ -124,30 +119,8 @@ export function VideoPlayer({
     (async () => {
       try {
         engineRef.current?.destroy();
-        const handle = await attach(video, { url: src, ext, isLive });
+        engineRef.current = await attach(video, { url: src, ext, isLive });
         if (cancelled) return;
-        engineRef.current = handle;
-
-        const hls = (handle as any)?.hls;
-        if (hls) {
-          const updateAudioTracks = () => {
-            if (hls.audioTracks && hls.audioTracks.length > 0) {
-              const list = hls.audioTracks.map((t: any, idx: number) => ({
-                id: idx,
-                label: t.name || t.lang || `Audio ${idx + 1}`,
-              }));
-              setAudioTracks(list);
-              setActiveAudio(hls.audioTrack);
-            }
-          };
-
-          hls.on("hlsManifestParsed", updateAudioTracks);
-          hls.on("hlsAudioTracksUpdated", updateAudioTracks);
-          hls.on("hlsAudioTrackSwitched", (_: any, data: { id: number }) => {
-            setActiveAudio(data.id);
-          });
-        }
-
         video.play().catch(() => {});
       } catch (e) {
         if (!cancelled) tryFallback((e as Error).message || "Playback failed");
@@ -160,9 +133,9 @@ export function VideoPlayer({
         const v = videoRef.current;
         if (cancelled || !v || v.readyState >= 3) return;
         if (!isLastSource) {
-          tryFallback("Chargement lent — bascule sur la source secondaire...");
+          tryFallback("Stream was slow to start — switching to backup source.");
         } else {
-          setError("Flux indisponible pour le moment.");
+          setError("Couldn’t start this channel — it may be offline, geo-blocked, or not broadcasting right now. Try another.");
         }
       },
       isLastSource ? 30000 : 12000,
@@ -176,6 +149,7 @@ export function VideoPlayer({
     };
   }, [src, ext, isLive, tryFallback, srcIdx, sources.length]);
 
+  // media element events
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -202,7 +176,8 @@ export function VideoPlayer({
       }
     };
     const onEnd = () => onEnded?.();
-    const onErr = () => tryFallback("Format non supporté directement, tentative de transcodage...");
+    const onErr = () =>
+      tryFallback("This title isn’t available from your provider right now, or can’t be played in the browser. Try another title.");
 
     v.addEventListener("play", onPlay);
     v.addEventListener("pause", onPause);
@@ -293,15 +268,6 @@ export function VideoPlayer({
     if (videoRef.current) videoRef.current.playbackRate = s;
   };
 
-  const selectAudioTrack = (index: number) => {
-    const hls = (engineRef.current as any)?.hls;
-    if (hls) {
-      hls.audioTrack = index;
-      setActiveAudio(index);
-    }
-    setAudioMenu(false);
-  };
-
   const loadSubtitleFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -330,55 +296,14 @@ export function VideoPlayer({
     setActiveTrack(idx);
   }, []);
 
-  const fetchExternalSub = async (langCode: string, label: string) => {
-    const video = videoRef.current;
-    if (!video || !title) return;
-
-    setLoadingSubLang(langCode);
-    try {
-      const res = await fetch(`/api/subtitles?title=${encodeURIComponent(title)}&lang=${langCode}`);
-      const data = await res.json();
-
-      if (data.url) {
-        let trackEl = video.querySelector(`track[srclang="${langCode}"]`) as HTMLTrackElement;
-        if (!trackEl) {
-          trackEl = document.createElement("track");
-          trackEl.kind = "subtitles";
-          trackEl.label = label;
-          trackEl.srclang = langCode;
-          trackEl.src = data.url;
-          video.appendChild(trackEl);
-        }
-
-        setTimeout(() => {
-          for (let i = 0; i < video.textTracks.length; i++) {
-            if (video.textTracks[i].language === langCode) {
-              selectTrack(i);
-              break;
-            }
-          }
-        }, 300);
-      }
-    } catch (err) {
-      console.error("Erreur sous-titres externes:", err);
-    } finally {
-      setLoadingSubLang(null);
-      setCapMenu(false);
-    }
-  };
-
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
     const refresh = () => {
-      const list: Array<{ index: number; label: string; lang?: string }> = [];
+      const list: Array<{ index: number; label: string }> = [];
       for (let i = 0; i < v.textTracks.length; i++) {
         const t = v.textTracks[i];
-        list.push({
-          index: i,
-          label: t.label || t.language || `Track ${i + 1}`,
-          lang: t.language,
-        });
+        list.push({ index: i, label: t.label || t.language || `Track ${i + 1}` });
       }
       setTrackList(list);
     };
@@ -430,7 +355,7 @@ export function VideoPlayer({
       onMouseMove={showControls}
       onClick={showControls}
       className={cn(
-        "group relative h-full w-full select-none bg-black overflow-hidden",
+        "group relative h-dvh w-full select-none bg-black",
         controlsOn ? "cursor-default" : "cursor-none",
       )}
     >
@@ -438,7 +363,6 @@ export function VideoPlayer({
         ref={videoRef}
         className="absolute inset-0 h-full w-full object-contain"
         playsInline
-        crossOrigin="anonymous"
         onClick={togglePlay}
         onDoubleClick={toggleFs}
       >
@@ -470,13 +394,13 @@ export function VideoPlayer({
         <div className="absolute inset-0 grid place-items-center bg-ink-950/90 px-6 text-center">
           <div className="max-w-md">
             <AlertTriangle className="mx-auto mb-4 h-10 w-10 text-iris-400" />
-            <p className="text-lg font-semibold">Erreur de lecture</p>
+            <p className="text-lg font-semibold">Can’t play this stream</p>
             <p className="mt-2 text-sm text-fog-400">{error}</p>
             <button
               onClick={onBack}
               className="mt-6 rounded-xl bg-ink-700 px-5 py-2.5 text-sm font-medium hover:bg-ink-600"
             >
-              Retour
+              Go back
             </button>
           </div>
         </div>
@@ -537,17 +461,17 @@ export function VideoPlayer({
         )}
 
         <div className="flex items-center gap-3 sm:gap-4">
-          <button onClick={togglePlay} className="text-white transition-transform hover:scale-110" title="Play/Pause">
+          <button onClick={togglePlay} className="text-white transition-transform hover:scale-110" title="Play/Pause (space)">
             {playing ? <Pause className="h-7 w-7 fill-white" /> : <Play className="h-7 w-7 fill-white" />}
           </button>
 
           {seekable && (
             <>
-              <button onClick={() => seek(displayCurrent - 10)} className="relative text-white/90 transition-transform hover:scale-110" title="-10s">
+              <button onClick={() => seek(displayCurrent - 10)} className="relative text-white/90 transition-transform hover:scale-110" title="Back 10s (←)">
                 <RotateCcw className="h-6 w-6" />
                 <span className="absolute inset-0 grid place-items-center text-[8px] font-bold">10</span>
               </button>
-              <button onClick={() => seek(displayCurrent + 10)} className="relative text-white/90 transition-transform hover:scale-110" title="+10s">
+              <button onClick={() => seek(displayCurrent + 10)} className="relative text-white/90 transition-transform hover:scale-110" title="Forward 10s (→)">
                 <RotateCw className="h-6 w-6" />
                 <span className="absolute inset-0 grid place-items-center text-[8px] font-bold">10</span>
               </button>
@@ -555,13 +479,13 @@ export function VideoPlayer({
           )}
 
           {!isLive && hasNext && (
-            <button onClick={onNext} className="text-white/90 transition-transform hover:scale-110" title="Suivant">
+            <button onClick={onNext} className="text-white/90 transition-transform hover:scale-110" title="Next episode (n)">
               <SkipForward className="h-6 w-6 fill-white/90" />
             </button>
           )}
 
           <div className="flex items-center gap-2.5">
-            <button onClick={toggleMute} className="shrink-0 text-white" title="Muet">
+            <button onClick={toggleMute} className="shrink-0 text-white" title="Mute (m)">
               {muted || volume === 0 ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
             </button>
             <input
@@ -577,49 +501,19 @@ export function VideoPlayer({
           </div>
 
           <div className="ml-auto flex items-center gap-3 sm:gap-4">
-            {audioTracks.length > 0 && (
-              <div className="relative">
-                <button
-                  onClick={() => { setAudioMenu((v) => !v); setCapMenu(false); setSpeedMenu(false); }}
-                  className="text-white/90 transition-transform hover:scale-110"
-                  title="Pistes Audio"
-                >
-                  <Languages className="h-6 w-6" />
-                </button>
-                {audioMenu && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setAudioMenu(false)} />
-                    <div className="absolute bottom-10 right-0 z-20 max-h-72 w-48 overflow-y-auto rounded-xl panel py-1 text-sm">
-                      <p className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-fog-500">Audio Language</p>
-                      {audioTracks.map((t) => (
-                        <button
-                          key={t.id}
-                          onClick={() => selectAudioTrack(t.id)}
-                          className="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-white/10"
-                        >
-                          <span className="truncate">{t.label}</span>
-                          {activeAudio === t.id && <Check className="h-3.5 w-3.5 text-iris-400" />}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
             <div className="relative">
               <button
-                onClick={() => { setCapMenu((v) => !v); setAudioMenu(false); setSpeedMenu(false); }}
+                onClick={() => setCapMenu((v) => !v)}
                 className={cn("transition-transform hover:scale-110", activeTrack >= 0 ? "text-iris-400" : "text-white/90")}
-                title="Sous-titres"
+                title="Subtitles (c)"
               >
                 <Captions className="h-6 w-6" />
               </button>
               {capMenu && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setCapMenu(false)} />
-                  <div className="absolute bottom-10 right-0 z-20 max-h-80 w-64 overflow-y-auto rounded-xl panel py-1 text-sm">
-                    <p className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-fog-500">Embedded Subtitles</p>
+                  <div className="absolute bottom-10 right-0 z-20 max-h-72 w-56 overflow-y-auto rounded-xl panel py-1 text-sm">
+                    <p className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-fog-500">Subtitles</p>
                     <button
                       onClick={() => { selectTrack(-1); setCapMenu(false); }}
                       className="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-white/10"
@@ -637,28 +531,15 @@ export function VideoPlayer({
                         {activeTrack === t.index && <Check className="h-3.5 w-3.5 shrink-0 text-iris-400" />}
                       </button>
                     ))}
-
-                    <div className="my-1 h-px bg-white/10" />
-                    <p className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-fog-500">Auto Subtitles (OpenSub)</p>
-
-                    {AUTO_SUB_LANGS.map((item) => (
-                      <button
-                        key={item.code}
-                        onClick={() => fetchExternalSub(item.code, item.label)}
-                        disabled={loadingSubLang === item.code}
-                        className="flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-white/10 text-xs text-indigo-300"
-                      >
-                        <span>{item.label}</span>
-                        {loadingSubLang === item.code && <Loader2 className="h-3 w-3 animate-spin text-iris-400" />}
-                      </button>
-                    ))}
-
+                    {trackList.length === 0 && (
+                      <p className="px-3 py-1.5 text-xs text-fog-500">No embedded captions found.</p>
+                    )}
                     <div className="my-1 h-px bg-white/10" />
                     <button
                       onClick={() => { subFileRef.current?.click(); setCapMenu(false); }}
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-iris-300 hover:bg-white/10"
                     >
-                      <Upload className="h-3.5 w-3.5" /> Charger fichier…
+                      <Upload className="h-3.5 w-3.5" /> Load from file…
                     </button>
                   </div>
                 </>
@@ -668,9 +549,9 @@ export function VideoPlayer({
             {!isLive && (
               <div className="relative">
                 <button
-                  onClick={() => { setSpeedMenu((v) => !v); setCapMenu(false); setAudioMenu(false); }}
+                  onClick={() => setSpeedMenu((v) => !v)}
                   className={cn("flex items-center gap-1 transition-transform hover:scale-110", speed !== 1 ? "text-iris-400" : "text-white/90")}
-                  title="Vitesse"
+                  title="Playback speed"
                 >
                   <Gauge className="h-6 w-6" />
                   {speed !== 1 && <span className="text-xs font-semibold">{speed}x</span>}
@@ -698,7 +579,7 @@ export function VideoPlayer({
             <button onClick={togglePip} className="text-white/90 transition-transform hover:scale-110" title="Picture in picture">
               <PictureInPicture2 className="h-6 w-6" />
             </button>
-            <button onClick={toggleFs} className="text-white/90 transition-transform hover:scale-110" title="Fullscreen">
+            <button onClick={toggleFs} className="text-white/90 transition-transform hover:scale-110" title="Fullscreen (f)">
               {fullscreen ? <Minimize className="h-6 w-6" /> : <Maximize className="h-6 w-6" />}
             </button>
           </div>
