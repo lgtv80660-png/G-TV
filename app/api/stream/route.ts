@@ -6,10 +6,19 @@ import type { StreamKind } from "@/lib/xtream/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Désactiver la vérification SSL stricte pour les serveurs Xtream en HTTPS avec certificats expirés/auto-signés
+// Désactiver la vérification SSL stricte pour les serveurs Xtream
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 const UA = "IPTVSmartersPro/3.1.5 (Linux; Android 10)";
+
+// Mapping propre des MIME Types selon l'extension
+const MIME_MAP: Record<string, string> = {
+  mp4: "video/mp4",
+  mkv: "video/x-matroska",
+  ts: "video/mp2t",
+  m3u8: "application/x-mpegURL",
+  avi: "video/x-msvideo",
+};
 
 export async function GET(req: Request) {
   let creds;
@@ -22,7 +31,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") as StreamKind | null;
   const id = searchParams.get("id");
-  const ext = searchParams.get("ext") || "ts";
+  const ext = (searchParams.get("ext") || "ts").toLowerCase();
 
   if (!type || !id || !["live", "movie", "series"].includes(type)) {
     return new Response("Bad stream request", { status: 400 });
@@ -55,15 +64,13 @@ export async function GET(req: Request) {
   let upstream: Response;
 
   try {
-    // Premier essai direct
     upstream = await fetch(upstreamUrl, {
       headers,
-      redirect: "manual", // Gérer les 302/301 manuellement pour éviter les erreurs de protocole Fetch
+      redirect: "manual",
       cache: "no-store",
       signal: req.signal,
     });
 
-    // Si le serveur Xtream renvoie une redirection (301, 302, 307, 308)
     if ([301, 302, 307, 308].includes(upstream.status)) {
       const redirectUrl = upstream.headers.get("location");
       if (redirectUrl) {
@@ -103,15 +110,18 @@ export async function GET(req: Request) {
     if (v) respHeaders.set(h, v);
   }
 
-  if (!respHeaders.has("content-type")) {
-    respHeaders.set("content-type", type === "live" ? "video/mp2t" : "video/mp4");
+  // CORRECTION DU SON : Détection précise du Content-Type
+  const upstreamCT = upstream.headers.get("content-type");
+  if (!upstreamCT || upstreamCT === "application/octet-stream" || upstreamCT === "text/html") {
+    const fallbackMime = MIME_MAP[ext] || (type === "live" ? "video/mp2t" : "video/mp4");
+    respHeaders.set("content-type", fallbackMime);
   }
 
   if (!respHeaders.has("accept-ranges") && type !== "live") {
     respHeaders.set("accept-ranges", "bytes");
   }
 
-  // Désactiver la mise en cache et autoriser CORS
+  // Desactiver le cache et autoriser CORS
   respHeaders.set("cache-control", "no-store, no-cache, must-revalidate");
   respHeaders.set("Access-Control-Allow-Origin", "*");
 
