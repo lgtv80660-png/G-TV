@@ -419,11 +419,10 @@ export default function SeriesDetailsView() {
                   <VideoPlayer
                     key={activeEpisode.id}
                     sources={[
-                      `/api/transcode?type=series&id=${activeEpisode.id}&ext=${
-                        activeEpisode.container_extension || "mkv"
-                      }`,
+                      `/api/stream?type=series&id=${activeEpisode.id}&ext=mp4`,
+                      `/api/stream?type=series&id=${activeEpisode.id}&ext=ts`,
                       `/api/stream?type=series&id=${activeEpisode.id}&ext=${
-                        activeEpisode.container_extension || "mp4"
+                        activeEpisode.container_extension || "mkv"
                       }`,
                     ]}
                     ext="mp4"
