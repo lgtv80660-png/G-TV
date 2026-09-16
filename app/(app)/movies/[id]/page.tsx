@@ -8,50 +8,59 @@ import { Play, ArrowLeft, Star, Heart, X, User, Film, Info, Maximize, Video } fr
 import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
+/**
+ * Extraction robuste de la durée totale du film en secondes.
+ */
 function extractDurationInSeconds(data: any): number {
   if (!data) return 0;
   
   const info = data.info || {};
   const vodData = data.movie_data || {};
 
-  const secsCandidates = [info.duration_secs, vodData.duration_secs, info.length_secs, vodData.length_secs];
+  // 1. Recherche parmi les valeurs numériques directes (secondes)
+  const secsCandidates = [
+    info.duration_secs,
+    vodData.duration_secs,
+    info.length_secs,
+    vodData.length_secs,
+    info.duration_seconds,
+    vodData.duration_seconds
+  ];
   for (const c of secsCandidates) {
-    if (c && !isNaN(Number(c)) && Number(c) > 300) return Number(c);
+    const num = Number(c);
+    if (!isNaN(num) && num > 0) return num;
   }
 
-  const strCandidates = [info.duration, vodData.duration, info.runtime, vodData.runtime];
+  // 2. Recherche dans les chaînes de texte (HH:MM:SS, MM:SS ou "120 min")
+  const strCandidates = [
+    info.duration,
+    vodData.duration,
+    info.runtime,
+    vodData.runtime,
+    info.length,
+    vodData.length
+  ];
+
   for (const raw of strCandidates) {
     if (!raw) continue;
     const str = String(raw).trim().toLowerCase().replace("min", "").trim();
     
+    // Format HH:MM:SS ou MM:SS
     if (str.includes(":")) {
       const parts = str.split(":").map((p) => parseInt(p, 10) || 0);
       if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-      if (parts.length === 2) return parts[0] * 3600 + parts[1] * 60;
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
     }
 
+    // Format numérique simple en minutes ou secondes
     const num = parseInt(str, 10);
     if (!isNaN(num) && num > 0) {
+      // Si la valeur est inférieure à 300, c'est probablement des minutes
       return num < 300 ? num * 60 : num;
     }
   }
 
   return 0;
-}
-
-function getTrailerSearchQuery(title: string, year: string, lang: string = "fr"): string {
-  const cleanTitle = title.trim();
-  const yearStr = year ? ` ${year}` : "";
-
-  switch (lang.toLowerCase()) {
-    case "ar":
-      return encodeURIComponent(`${cleanTitle}${yearStr} اعلان مترجم`);
-    case "fr":
-      return encodeURIComponent(`${cleanTitle}${yearStr} bande annonce officielle vf`);
-    case "en":
-    default:
-      return encodeURIComponent(`${cleanTitle}${yearStr} official trailer`);
-  }
 }
 
 function FlipActorCard({ name }: { name: string }) {
@@ -127,21 +136,12 @@ export default function MovieDetailPage() {
 
   const [movieInfo, setMovieInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [showTrailer, setShowTrailer] = useState(false);
-  const [currentLang, setCurrentLang] = useState("fr");
+  const [activeMedia, setActiveMedia] = useState<"movie" | "trailer" | null>(null);
 
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
 
   const { toggleFav, isFav } = useLibrary();
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedLang = localStorage.getItem("app_lang") || localStorage.getItem("language") || "fr";
-      setCurrentLang(savedLang);
-    }
-  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -193,6 +193,7 @@ export default function MovieDetailPage() {
   const streamId = vodData.stream_id || info.stream_id || id;
   const containerExt = vodData.container_extension || info.container_extension || "mp4";
 
+  // Extraction de la durée en secondes
   const knownDurationSec = extractDurationInSeconds(movieInfo);
 
   const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
@@ -207,9 +208,15 @@ export default function MovieDetailPage() {
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : Array.isArray(rawCast) ? rawCast : [];
 
-  const trailerEmbedUrl = youtubeTrailerId
-    ? `https://www.youtube.com/embed/${youtubeTrailerId}?autoplay=1`
-    : `https://www.youtube.com/embed?listType=search&list=${getTrailerSearchQuery(movieTitle, movieYear, currentLang)}&autoplay=1`;
+  // Transmettre la durée calculée dans les URLs
+  const movieSources = [
+    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}&duration=${knownDurationSec}`,
+    `/api/stream?type=movie&id=${streamId}&ext=${containerExt}&duration=${knownDurationSec}`,
+  ];
+
+  const trailerSources = youtubeTrailerId
+    ? [`/api/trailer?ytId=${youtubeTrailerId}`]
+    : [`/api/trailer?title=${encodeURIComponent(movieTitle)}&year=${movieYear}`];
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -246,7 +253,7 @@ export default function MovieDetailPage() {
       </div>
 
       {/* Hero Banner */}
-      <div className={`relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[200px] sm:min-h-[240px] flex items-end p-4 sm:p-6 ${isPlaying ? "hidden sm:flex" : "flex"}`}>
+      <div className={`relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[200px] sm:min-h-[240px] flex items-end p-4 sm:p-6 ${activeMedia ? "hidden sm:flex" : "flex"}`}>
         {backdropUrl && (
           <div className="absolute inset-0 z-0">
             <img src={backdropUrl} alt="" className="w-full h-full object-cover opacity-35 filter blur-[2px]" />
@@ -254,158 +261,3 @@ export default function MovieDetailPage() {
             <div className="absolute inset-0 bg-gradient-to-t from-[#0b0c10] via-transparent to-transparent" />
           </div>
         )}
-
-        <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 w-full">
-          {(info.movie_image || info.cover_big) && (
-            <img
-              src={info.movie_image || info.cover_big}
-              alt={movieTitle}
-              className="w-28 sm:w-36 aspect-[2/3] object-cover rounded-xl shadow-2xl border border-white/10 flex-shrink-0"
-            />
-          )}
-
-          <div className="space-y-2 sm:space-y-3 flex-1">
-            <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight text-white">
-              {movieTitle} {movieYear ? `(${movieYear})` : ""}
-            </h1>
-
-            <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 font-medium">
-              {info.rating && (
-                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2 py-0.5 rounded-md flex items-center gap-1 font-semibold">
-                  <Star className="w-3 h-3 fill-current" /> {info.rating}
-                </span>
-              )}
-              {info.releasedate && (
-                <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded-md">
-                  {info.releasedate}
-                </span>
-              )}
-              {info.genre && <span className="text-zinc-400">• {info.genre}</span>}
-            </div>
-
-            {!isPlaying && (
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  onClick={() => setIsPlaying(true)}
-                  className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:scale-105"
-                >
-                  <Play className="w-4 h-4 fill-current translate-x-0.5" />
-                  Play
-                </button>
-
-                <button
-                  onClick={() => setShowTrailer(true)}
-                  className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs px-4 py-2.5 rounded-xl border border-white/10 transition-all hover:scale-105"
-                >
-                  <Video className="w-4 h-4 text-red-500 fill-current" />
-                  Bande-annonce
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Modale d'intégration de la bande-annonce DIRECTEMENT sur la page */}
-      {showTrailer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
-            <button
-              onClick={() => setShowTrailer(false)}
-              className="absolute top-3 right-3 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <iframe
-              src={trailerEmbedUrl}
-              title="Bande-annonce"
-              className="w-full h-full border-0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
-        {isPlaying && (
-          <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
-            <div className="flex items-center justify-between px-1">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-400 truncate max-w-[70%]">
-                {movieTitle}
-              </h2>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={handleFullscreenLandscape}
-                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
-                  title="Plein Écran Horizontal"
-                >
-                  <Maximize className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setIsPlaying(false)}
-                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
-                  title="Fermer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div
-              ref={playerContainerRef}
-              onClick={handleDoubleTap}
-              className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5 cursor-pointer"
-            >
-              <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
-                <VideoPlayer
-                  key={streamId}
-                  sources={[
-                    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}`,
-                    `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
-                  ]}
-                  ext="mp4"
-                  isLive={false}
-                  title={movieTitle}
-                  knownDuration={knownDurationSec}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Synopsis & Section Casting 3D */}
-        <div className={isPlaying ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
-          <div className="bg-[#12141c] border border-white/5 rounded-2xl p-4 sm:p-6 space-y-3">
-            <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <Film className="w-4 h-4 text-indigo-400" /> Synopsis & Histoire
-            </h3>
-            <p className="text-xs text-zinc-300 leading-relaxed">
-              {info.description || info.plot || "Aucun résumé disponible."}
-            </p>
-            {info.director && (
-              <div className="pt-2 border-t border-white/5 text-xs text-zinc-400">
-                <span className="text-zinc-500 font-semibold">Réalisateur : </span>
-                <span className="text-zinc-200">{info.director}</span>
-              </div>
-            )}
-          </div>
-
-          {castList.length > 0 && (
-            <div className="bg-[#12141c] border border-white/5 rounded-2xl p-4 sm:p-6 space-y-3">
-              <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <User className="w-4 h-4 text-indigo-400" /> Casting / Acteurs
-              </h3>
-              <div className="flex flex-wrap gap-2.5 pt-1">
-                {castList.slice(0, 10).map((actor: string, idx: number) => (
-                  <FlipActorCard key={idx} name={actor} />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
