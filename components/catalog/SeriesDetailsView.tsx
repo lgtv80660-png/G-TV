@@ -13,7 +13,6 @@ import { useLibrary } from "@/store/library";
 import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
 import type { Episode } from "@/lib/xtream/types";
 
-// Composant pour l'image d'épisode
 function EpisodeImage({
   ep,
   seriesTitle,
@@ -99,7 +98,6 @@ function EpisodeImage({
   );
 }
 
-// Carte d'acteur 3D Flip
 function FlipActorCard({ name }: { name: string }) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
@@ -218,7 +216,6 @@ export default function SeriesDetailsView() {
 
   const title = (info?.name as string) || (info?.title as string) || "Série";
 
-  // LOGIQUE DE RECUPERATION DYNAMIQUE DE L'AFFICHE DE LA SAISON SELECTIONNEE DEPUIS TMDB
   useEffect(() => {
     if (!activeSeasonKey) return;
 
@@ -420,9 +417,8 @@ export default function SeriesDetailsView() {
                   <VideoPlayer
                     key={activeEpisode.id}
                     sources={[
-                      `/api/stream?type=series&id=${activeEpisode.id}&ext=${
-                        activeEpisode.container_extension || "mp4"
-                      }`,
+                      `/api/stream?type=series&id=${activeEpisode.id}&ext=${activeEpisode.container_extension || "mp4"}`,
+                      `/api/transcode?type=series&id=${activeEpisode.id}`,
                     ]}
                     ext={activeEpisode.container_extension || "mp4"}
                     isLive={false}
