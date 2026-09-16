@@ -9,58 +9,70 @@ import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
 /**
- * Extraction robuste de la durée totale du film en secondes.
+ * Extraction robuste de la durée.
+ * Si aucune durée n'est trouvée dans l'API Xtream, on applique 7200s (2h)
+ * pour éviter que le lecteur se mette en mode "Live" sur Railway.
  */
 function extractDurationInSeconds(data: any): number {
-  if (!data) return 0;
+  if (!data) return 7200;
   
   const info = data.info || {};
   const vodData = data.movie_data || {};
 
-  // 1. Recherche parmi les valeurs numériques directes (secondes)
   const secsCandidates = [
     info.duration_secs,
     vodData.duration_secs,
     info.length_secs,
     vodData.length_secs,
     info.duration_seconds,
-    vodData.duration_seconds
+    vodData.duration_seconds,
   ];
   for (const c of secsCandidates) {
     const num = Number(c);
     if (!isNaN(num) && num > 0) return num;
   }
 
-  // 2. Recherche dans les chaînes de texte (HH:MM:SS, MM:SS ou "120 min")
   const strCandidates = [
     info.duration,
     vodData.duration,
     info.runtime,
     vodData.runtime,
     info.length,
-    vodData.length
+    vodData.length,
   ];
 
   for (const raw of strCandidates) {
     if (!raw) continue;
     const str = String(raw).trim().toLowerCase().replace("min", "").trim();
     
-    // Format HH:MM:SS ou MM:SS
     if (str.includes(":")) {
       const parts = str.split(":").map((p) => parseInt(p, 10) || 0);
       if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      if (parts.length === 2) return parts[0] * 3600 + parts[1] * 60;
     }
 
-    // Format numérique simple en minutes ou secondes
     const num = parseInt(str, 10);
     if (!isNaN(num) && num > 0) {
-      // Si la valeur est inférieure à 300, c'est probablement des minutes
       return num < 300 ? num * 60 : num;
     }
   }
 
-  return 0;
+  return 7200; // Fallback 2 heures
+}
+
+function getTrailerSearchQuery(title: string, year: string, lang: string = "fr"): string {
+  const cleanTitle = title.trim();
+  const yearStr = year ? ` ${year}` : "";
+
+  switch (lang.toLowerCase()) {
+    case "ar":
+      return encodeURIComponent(`${cleanTitle}${yearStr} اعلان مترجم`);
+    case "fr":
+      return encodeURIComponent(`${cleanTitle}${yearStr} bande annonce officielle vf`);
+    case "en":
+    default:
+      return encodeURIComponent(`${cleanTitle}${yearStr} official trailer`);
+  }
 }
 
 function FlipActorCard({ name }: { name: string }) {
@@ -137,11 +149,19 @@ export default function MovieDetailPage() {
   const [movieInfo, setMovieInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeMedia, setActiveMedia] = useState<"movie" | "trailer" | null>(null);
+  const [currentLang, setCurrentLang] = useState("fr");
 
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
 
   const { toggleFav, isFav } = useLibrary();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedLang = localStorage.getItem("app_lang") || localStorage.getItem("language") || "fr";
+      setCurrentLang(savedLang);
+    }
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -193,7 +213,6 @@ export default function MovieDetailPage() {
   const streamId = vodData.stream_id || info.stream_id || id;
   const containerExt = vodData.container_extension || info.container_extension || "mp4";
 
-  // Extraction de la durée en secondes
   const knownDurationSec = extractDurationInSeconds(movieInfo);
 
   const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
@@ -208,15 +227,15 @@ export default function MovieDetailPage() {
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : Array.isArray(rawCast) ? rawCast : [];
 
-  // Transmettre la durée calculée dans les URLs
   const movieSources = [
     `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}&duration=${knownDurationSec}`,
-    `/api/stream?type=movie&id=${streamId}&ext=${containerExt}&duration=${knownDurationSec}`,
+    `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
   ];
 
-  const trailerSources = youtubeTrailerId
-    ? [`/api/trailer?ytId=${youtubeTrailerId}`]
-    : [`/api/trailer?title=${encodeURIComponent(movieTitle)}&year=${movieYear}`];
+  // URL iframe propre pour YouTube
+  const youtubeEmbedUrl = youtubeTrailerId
+    ? `https://www.youtube-nocookie.com/embed/${youtubeTrailerId}?autoplay=1&rel=0`
+    : `https://www.youtube-nocookie.com/embed?listType=search&list=${getTrailerSearchQuery(movieTitle, movieYear, currentLang)}&autoplay=1`;
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -313,7 +332,7 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
-      {/* Main Grid */}
+      {/* Main Grid : LECTEUR UNIQUE (VideoPlayer pour film, Iframe pour Trailer) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {activeMedia && (
           <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
@@ -344,16 +363,28 @@ export default function MovieDetailPage() {
               onClick={handleDoubleTap}
               className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5 cursor-pointer"
             >
-              <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
-                <VideoPlayer
-                  key={`${streamId}-${activeMedia}`}
-                  sources={activeMedia === "movie" ? movieSources : trailerSources}
-                  ext="mp4"
-                  isLive={false}
-                  title={activeMedia === "trailer" ? `Bande-annonce : ${movieTitle}` : movieTitle}
-                  knownDuration={activeMedia === "movie" ? knownDurationSec : 0}
+              {activeMedia === "movie" ? (
+                /* Mode Film : Utilise le VideoPlayer transcodé */
+                <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
+                  <VideoPlayer
+                    key={`${streamId}-movie`}
+                    sources={movieSources}
+                    ext="mp4"
+                    isLive={false}
+                    title={movieTitle}
+                    knownDuration={knownDurationSec}
+                  />
+                </div>
+              ) : (
+                /* Mode Bande-Annonce : Utilise l'iframe YouTube directement dans le conteneur du lecteur */
+                <iframe
+                  src={youtubeEmbedUrl}
+                  title={`Bande-annonce ${movieTitle}`}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
                 />
-              </div>
+              )}
             </div>
           </div>
         )}
