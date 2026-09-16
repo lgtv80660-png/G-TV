@@ -218,7 +218,6 @@ export default function SeriesDetailsView() {
 
   const title = (info?.name as string) || (info?.title as string) || "Série";
 
-  // LOGIQUE DE RECUPERATION DYNAMIQUE DE L'AFFICHE DE LA SAISON SELECTIONNEE DEPUIS TMDB
   useEffect(() => {
     if (!activeSeasonKey) return;
 
@@ -236,7 +235,6 @@ export default function SeriesDetailsView() {
       try {
         let realTmdbId = info?.tmdb_id;
 
-        // 1. Recherche du TMDB ID via le nom si non présent
         if (!realTmdbId && cleanTitle) {
           const searchRes = await fetch(
             `/api/tmdb?path=search/tv&query=${encodeURIComponent(cleanTitle)}&language=fr-FR`
@@ -250,7 +248,6 @@ export default function SeriesDetailsView() {
           return;
         }
 
-        // 2. Récupération de l'affiche spécifique de la saison
         const seasonRes = await fetch(
           `/api/tmdb?path=tv/${realTmdbId}/season/${seasonNumber}&language=fr-FR`
         ).then((r) => r.json());
@@ -422,14 +419,14 @@ export default function SeriesDetailsView() {
                   <VideoPlayer
                     key={activeEpisode.id}
                     sources={[
-                      `/api/stream?type=series&id=${activeEpisode.id}&ext=${
-                        activeEpisode.container_extension || "mp4"
-                      }`,
                       `/api/transcode?type=series&id=${activeEpisode.id}&ext=${
                         activeEpisode.container_extension || "mkv"
                       }`,
+                      `/api/stream?type=series&id=${activeEpisode.id}&ext=${
+                        activeEpisode.container_extension || "mp4"
+                      }`,
                     ]}
-                    ext={activeEpisode.container_extension || "mp4"}
+                    ext="mp4"
                     isLive={false}
                     title={`${cleanName(title)} - S${activeEpisode.season || activeSeasonKey}E${activeEpisode.episode_num}`}
                   />
