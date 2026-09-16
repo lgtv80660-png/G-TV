@@ -4,32 +4,53 @@ import React, { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { Play, ArrowLeft, Star, Heart, X, User, Film, Info, Maximize } from "lucide-react";
+import { Play, ArrowLeft, Star, Heart, X, User, Film, Info, Maximize, Youtube } from "lucide-react";
 import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
-function parseDurationToSeconds(info: any, vodData: any): number {
-  if (info?.duration_secs && Number(info.duration_secs) > 0) {
-    return Number(info.duration_secs);
+/**
+ * Extrait et convertit la durée en secondes (compatibilité Transcode Railway).
+ */
+function extractDurationInSeconds(data: any): number {
+  if (!data) return 0;
+  
+  const info = data.info || {};
+  const vodData = data.movie_data || {};
+
+  const secsCandidates = [
+    info.duration_secs,
+    vodData.duration_secs,
+    info.length_secs,
+    vodData.length_secs,
+  ];
+  for (const c of secsCandidates) {
+    if (c && !isNaN(Number(c)) && Number(c) > 0) return Number(c);
   }
-  if (vodData?.duration_secs && Number(vodData.duration_secs) > 0) {
-    return Number(vodData.duration_secs);
+
+  const strCandidates = [
+    info.duration,
+    vodData.duration,
+    info.runtime,
+    vodData.runtime,
+  ];
+  
+  for (const raw of strCandidates) {
+    if (!raw) continue;
+    const str = String(raw).trim().toLowerCase().replace("min", "").trim();
+    
+    if (str.includes(":")) {
+      const parts = str.split(":").map((p) => parseInt(p, 10) || 0);
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+    }
+
+    const num = parseInt(str, 10);
+    if (!isNaN(num) && num > 0) {
+      return num > 300 ? num : num * 60;
+    }
   }
 
-  const raw = info?.duration || vodData?.duration;
-  if (!raw) return 0;
-
-  if (typeof raw === "number") return raw > 300 ? raw : raw * 60;
-
-  const str = String(raw).trim();
-  if (str.includes(":")) {
-    const parts = str.split(":").map((p) => parseInt(p, 10) || 0);
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-  }
-
-  const num = parseInt(str, 10);
-  return isNaN(num) ? 0 : num > 300 ? num : num * 60;
+  return 0;
 }
 
 const FlipActorCard = ({ name }: { name: string }) => {
@@ -104,6 +125,7 @@ export default function MovieDetailPage() {
   const [movieInfo, setMovieInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [showTrailer, setShowTrailer] = useState(false);
 
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
@@ -140,8 +162,7 @@ export default function MovieDetailPage() {
 
   const handleDoubleTap = () => {
     const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-    if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+    if (now - lastTapRef.current < 300) {
       handleFullscreenLandscape();
     }
     lastTapRef.current = now;
@@ -160,16 +181,18 @@ export default function MovieDetailPage() {
   const streamId = vodData.stream_id || info.stream_id || id;
   const containerExt = vodData.container_extension || info.container_extension || "mp4";
 
-  // Extraction propre de la durée totale en secondes
-  const knownDurationSec = parseDurationToSeconds(info, vodData);
+  const knownDurationSec = extractDurationInSeconds(movieInfo);
 
   const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
   const isFavorite = isFav("movie", Number(streamId));
   const movieTitle = info.name || info.title || "Film";
+  const youtubeTrailerId = info.youtube_trailer || vodData.youtube_trailer;
 
-  const castList = info.cast
-    ? info.cast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
-    : [];
+  // Extraction robuste de la liste des acteurs
+  const rawCast = info.cast || vodData.cast || info.actors || "";
+  const castList = typeof rawCast === "string"
+    ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
+    : Array.isArray(rawCast) ? rawCast : [];
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -244,17 +267,52 @@ export default function MovieDetailPage() {
             </div>
 
             {!isPlaying && (
-              <button
-                onClick={() => setIsPlaying(true)}
-                className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:scale-105"
-              >
-                <Play className="w-4 h-4 fill-current translate-x-0.5" />
-                Play
-              </button>
+              <div className="flex items-center gap-3 pt-1">
+                {/* Bouton Bande-Annonce */}
+                {youtubeTrailerId && (
+                  <button
+                    onClick={() => setShowTrailer(true)}
+                    className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs px-4 py-2.5 rounded-xl border border-white/10 transition-all"
+                  >
+                    <Youtube className="w-4 h-4 text-red-500 fill-current" />
+                    Bande-annonce
+                  </button>
+                )}
+
+                {/* Bouton Play */}
+                <button
+                  onClick={() => setIsPlaying(true)}
+                  className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:scale-105"
+                >
+                  <Play className="w-4 h-4 fill-current translate-x-0.5" />
+                  Play
+                </button>
+              </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Modale Bande-Annonce YouTube */}
+      {showTrailer && youtubeTrailerId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+            <button
+              onClick={() => setShowTrailer(false)}
+              className="absolute top-3 right-3 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <iframe
+              src={`https://www.youtube.com/embed/${youtubeTrailerId}?autoplay=1`}
+              title="Bande annonce"
+              className="w-full h-full border-0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      )}
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
