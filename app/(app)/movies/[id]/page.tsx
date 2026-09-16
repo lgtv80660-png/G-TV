@@ -146,16 +146,46 @@ export default function MovieDetailPage() {
   const streamId = vodData.stream_id || info.stream_id || id;
   const containerExt = vodData.container_extension || info.container_extension || "mp4";
 
-  // Même calcul exact de durée que dans la page Séries
-  const movieDurationSec =
-    Number(info?.duration_secs) ||
-    Number(vodData?.duration_secs) ||
-    (info?.duration ? parseInt(info.duration, 10) * 60 : 0) ||
-    (vodData?.duration ? parseInt(vodData.duration, 10) * 60 : 0) ||
-    0;
+  // Extraction propre du titre du film (évite de mettre "Film")
+  const rawTitle =
+    info?.name ||
+    vodData?.name ||
+    info?.title ||
+    vodData?.title ||
+    info?.movie_name ||
+    vodData?.movie_name ||
+    "";
 
-  // Emploi de cleanName() issu de vos utilitaires
-  const title = cleanName((info?.name as string) || (info?.title as string) || "Film");
+  const title = cleanName(rawTitle);
+
+  // Extraction de la durée en secondes (identique au mode séries)
+  const rawDuration =
+    info?.duration_secs ||
+    vodData?.duration_secs ||
+    info?.length_secs ||
+    vodData?.length_secs ||
+    info?.duration_seconds ||
+    vodData?.duration_seconds;
+
+  let movieDurationSec = Number(rawDuration) || 0;
+
+  if (!movieDurationSec) {
+    const strDur = info?.duration || vodData?.duration || info?.runtime || vodData?.runtime;
+    if (strDur) {
+      const str = String(strDur).trim().toLowerCase().replace("min", "").trim();
+      if (str.includes(":")) {
+        const parts = str.split(":").map((p) => parseInt(p, 10) || 0);
+        if (parts.length === 3) movieDurationSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+        else if (parts.length === 2) movieDurationSec = parts[0] * 60 + parts[1];
+      } else {
+        const parsed = parseInt(str, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          movieDurationSec = parsed < 300 ? parsed * 60 : parsed;
+        }
+      }
+    }
+  }
+
   const rating = ratingNum(info?.rating);
   const year = yearFrom(info?.releasedate || info?.releasedate, title);
   const isFavorite = isFav("movie", Number(streamId));
@@ -168,7 +198,7 @@ export default function MovieDetailPage() {
 
   // Sources configurées à l'identique de la page Séries
   const movieSources = [
-    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}`,
+    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}&duration=${movieDurationSec}`,
     `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
   ];
 
@@ -275,7 +305,7 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
-      {/* Main Grid avec VideoPlayer identique aux Séries */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {activeMedia && (
           <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
