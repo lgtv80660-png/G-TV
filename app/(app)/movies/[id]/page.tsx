@@ -3,12 +3,11 @@
 import React, { useState, useEffect, useRef, use } from "react";
 import Link from "next/link";
 import { Play, Star, Clock, X, User, Info, Maximize, Video, ArrowLeft, Heart, Film } from "lucide-react";
-import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { useLibrary } from "@/store/library";
 import { api } from "@/lib/api";
 import { ratingNum, yearFrom, cleanName } from "@/lib/utils";
 
-// 1. Extraction autonome et sécurisée du titre
+// 1. Extraction propre et sécurisée du titre du film
 function getCleanTitle(data: any): string {
   if (!data) return "Film";
   const info = data?.info || {};
@@ -115,7 +114,7 @@ const FlipActorCard = ({ name }: { name: string }) => {
 };
 
 export default function MovieDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  // Dépaquetage propre de la promesse des paramètres pour Next.js 15
+  // Prise en charge asynchrone sécurisée de `params` (Next.js 15)
   const resolvedParams = use(params);
   const movieId = resolvedParams?.id;
 
@@ -127,8 +126,6 @@ export default function MovieDetailPage({ params }: { params: Promise<{ id: stri
   const [tmdbTrailerKey, setTmdbTrailerKey] = useState<string | null>(null);
 
   const playerContainerRef = useRef<HTMLDivElement>(null);
-  const lastTapRef = useRef<number>(0);
-
   const { isFav, toggleFav } = useLibrary();
 
   useEffect(() => {
@@ -158,7 +155,7 @@ export default function MovieDetailPage({ params }: { params: Promise<{ id: stri
       .finally(() => setLoading(false));
   }, [movieId]);
 
-  const handleFullscreenLandscape = async () => {
+  const handleFullscreen = async () => {
     const elem = playerContainerRef.current;
     if (!elem) return;
     try {
@@ -173,14 +170,6 @@ export default function MovieDetailPage({ params }: { params: Promise<{ id: stri
     } catch (err) {
       console.error("Erreur Plein Écran:", err);
     }
-  };
-
-  const handleDoubleTap = () => {
-    const now = Date.now();
-    if (now - lastTapRef.current < 300) {
-      handleFullscreenLandscape();
-    }
-    lastTapRef.current = now;
   };
 
   if (loading) {
@@ -220,14 +209,31 @@ export default function MovieDetailPage({ params }: { params: Promise<{ id: stri
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : Array.isArray(rawCast) ? rawCast : [];
 
-  const isNativeSupported = ["mp4", "m3u8"].includes(containerExt);
-
-  const movieSources = isNativeSupported
-    ? [`/api/stream?type=movie&id=${streamId}&ext=${containerExt}`]
-    : [`/api/transcode?type=movie&id=${streamId}&ext=${containerExt || "mkv"}`];
-
   const backdropUrl = info?.backdrop_path?.[0] || info?.backdrop || info?.cover_big || info?.movie_image;
   const posterUrl = info?.movie_image || info?.cover_big || info?.cover;
+
+  // --- URL EXACTE VERS LA PAGE WATCH ---
+  const watchIframeUrl = `/watch?type=movie&id=${streamId}&ext=${containerExt}&title=${encodeURIComponent(movieTitle)}${posterUrl ? `&poster=${encodeURIComponent(posterUrl)}` : ""}`;
+
+  // Récupération de la bande-annonce TMDB
+  useEffect(() => {
+    if (!movieTitle || movieTitle.toLowerCase() === "film") return;
+
+    let isMounted = true;
+    const fetchTmdbTrailer = async () => {
+      try {
+        const res = await fetch(
+          `/api/tmdb-trailer?title=${encodeURIComponent(movieTitle)}&year=${year || ""}&tmdbId=${tmdbId || ""}&lang=${currentLang}`
+        );
+        const data = await res.json();
+        if (isMounted && data?.key) setTmdbTrailerKey(data.key);
+      } catch (err) {
+        console.error("Erreur TMDB trailer:", err);
+      }
+    };
+    fetchTmdbTrailer();
+    return () => { isMounted = false; };
+  }, [movieTitle, year, tmdbId, currentLang]);
 
   const finalTrailerKey = tmdbTrailerKey || info?.youtube_trailer || vodData?.youtube_trailer;
   const youtubeEmbedUrl = finalTrailerKey
@@ -344,9 +350,9 @@ export default function MovieDetailPage({ params }: { params: Promise<{ id: stri
               </h2>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={handleFullscreenLandscape}
+                  onClick={handleFullscreen}
                   className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
-                  title="Plein Écran Horizontal"
+                  title="Plein Écran"
                 >
                   <Maximize className="w-4 h-4" />
                 </button>
@@ -362,20 +368,15 @@ export default function MovieDetailPage({ params }: { params: Promise<{ id: stri
 
             <div
               ref={playerContainerRef}
-              onClick={handleDoubleTap}
-              className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5 cursor-pointer"
+              className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5"
             >
               {activeMedia === "movie" ? (
-                <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
-                  <VideoPlayer
-                    key={`${streamId}-movie`}
-                    sources={movieSources}
-                    ext="mp4"
-                    isLive={false}
-                    title={movieTitle}
-                    knownDuration={movieDurationSec}
-                  />
-                </div>
+                <iframe
+                  src={watchIframeUrl}
+                  className="w-full h-full border-0"
+                  allow="autoplay; fullscreen; picture-in-picture"
+                  allowFullScreen
+                />
               ) : (
                 <iframe
                   src={youtubeEmbedUrl}
