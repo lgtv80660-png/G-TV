@@ -10,7 +10,6 @@ import { useLibrary } from "@/store/library";
 
 /**
  * Nettoie le titre du film en retirant les années entre parenthèses à la fin
- * Exemple : "Les Animaux fantastiques (2022)" -> "Les Animaux fantastiques"
  */
 function cleanMovieTitle(rawTitle: string): string {
   if (!rawTitle) return "";
@@ -18,7 +17,7 @@ function cleanMovieTitle(rawTitle: string): string {
 }
 
 /**
- * Extraction robuste du titre du film
+ * Extraction du titre propre du film
  */
 function extractMovieTitle(movieInfo: any): string {
   if (!movieInfo) return "Film";
@@ -209,7 +208,7 @@ export default function MovieDetailPage() {
   const movieYear = info.releasedate?.slice(0, 4) || info.year || "";
   const tmdbId = info.tmdb_id || vodData.tmdb_id;
 
-  // Récupération de la vraie bande-annonce TMDB
+  // Récupération de la bande-annonce TMDB
   useEffect(() => {
     if (!movieTitle || movieTitle.toLowerCase() === "film") return;
 
@@ -275,12 +274,12 @@ export default function MovieDetailPage() {
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : Array.isArray(rawCast) ? rawCast : [];
 
-  // Flux direct prioritaire pour éviter les coupures de transcodage si disponible
+  // /api/transcode EN PREMIER pour garantir l'encodage audio AAC
   const movieSources = [
-    `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
     knownDurationSec > 0
       ? `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}&duration=${knownDurationSec}`
       : `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}`,
+    `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
   ];
 
   const finalTrailerKey = tmdbTrailerKey || info.youtube_trailer || vodData.youtube_trailer;
@@ -342,7 +341,6 @@ export default function MovieDetailPage() {
           )}
 
           <div className="space-y-2 sm:space-y-3 flex-1">
-            {/* Titre propre sans année dupliquée */}
             <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight text-white">
               {movieTitle}
             </h1>
