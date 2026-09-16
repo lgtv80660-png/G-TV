@@ -7,48 +7,7 @@ import { Play, Star, Calendar, Clock, X, User, Info, Maximize, Video, ArrowLeft,
 import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { useLibrary } from "@/store/library";
 import { api } from "@/lib/api";
-import { ratingNum, yearFrom, cn } from "@/lib/utils";
-
-// 1. Extraction 100% autonome du titre
-function getCleanTitle(data: any): string {
-  if (!data) return "Film";
-  const info = data.info || {};
-  const vod = data.movie_data || {};
-  
-  const rawTitle = info.name || vod.name || info.title || vod.title || info.o_name || "Film";
-  
-  const cleaned = String(rawTitle).replace(/\s*\(\d{4}\)\s*$/g, "").trim();
-  return cleaned || "Film";
-}
-
-// 2. Extraction ultra-robuste de la durée en secondes
-function getDurationInSeconds(data: any): number {
-  if (!data) return 0;
-  const info = data.info || {};
-  const vod = data.movie_data || {};
-
-  const secKeys = ['duration_secs', 'length_secs', 'duration_seconds'];
-  for (const key of secKeys) {
-    if (info[key] && !isNaN(Number(info[key]))) return Number(info[key]);
-    if (vod[key] && !isNaN(Number(vod[key]))) return Number(vod[key]);
-  }
-
-  const strDur = info.duration || vod.duration || info.runtime || vod.runtime;
-  if (strDur) {
-    const cleanStr = String(strDur).toLowerCase().replace(/min/g, '').trim();
-    
-    if (cleanStr.includes(':')) {
-      const parts = cleanStr.split(':').map(Number);
-      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-      if (parts.length === 2) return parts[0] * 60 + parts[1];
-    } else {
-      const num = Number(cleanStr);
-      if (!isNaN(num)) return num < 300 ? num * 60 : num;
-    }
-  }
-  
-  return 0;
-}
+import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
 
 const FlipActorCard = ({ name }: { name: string }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -182,13 +141,24 @@ export default function MovieDetailPage() {
     );
   }
 
-  const info = movieInfo?.info || movieInfo?.movie_data || {};
+  // --- LOGIQUE EXTRAITE EXACTEMENT COMME DANS LES SÉRIES ---
+  const info = movieInfo?.info || movieInfo?.movie_data || (movieInfo && !movieInfo.movie_data ? movieInfo : {}) || {};
   const vodData = movieInfo?.movie_data || {};
-  const streamId = vodData.stream_id || info.stream_id || id;
-  const containerExt = (vodData.container_extension || info.container_extension || "mp4").toLowerCase();
+  
+  const streamId = vodData?.stream_id || info?.stream_id || id;
+  const containerExt = vodData?.container_extension || info?.container_extension || "mp4";
 
-  const movieTitle = getCleanTitle(movieInfo);
-  const movieDurationSec = getDurationInSeconds(movieInfo);
+  // Extraction propre du Titre (comme dans Séries)
+  const rawTitle = (info?.name as string) || (info?.title as string) || (info?.o_name as string) || "Film";
+  const movieTitle = cleanName(rawTitle);
+
+  // Extraction propre de la Durée (comme dans Séries)
+  const movieDurationSec =
+    Number(info?.duration_secs) ||
+    Number(vodData?.duration_secs) ||
+    (info?.duration ? parseInt(String(info.duration).replace(/\D/g, "")) * 60 : 0) ||
+    (vodData?.duration ? parseInt(String(vodData.duration).replace(/\D/g, "")) * 60 : 0) ||
+    0;
 
   const rating = ratingNum(info?.rating);
   const year = yearFrom(info?.releasedate || info?.releasedate, movieTitle);
@@ -200,28 +170,16 @@ export default function MovieDetailPage() {
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : Array.isArray(rawCast) ? rawCast : [];
 
-  // ==========================================
-  // LA LOGIQUE DE FLUX INTELLIGENTE EST ICI
-  // ==========================================
-  const isMp4 = containerExt === "mp4" || containerExt === "m3u8";
-
-  const movieSources = isMp4
-    ? [
-        // Priorité 1 : Le flux natif si c'est un format web supporté (économise le serveur)
-        `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
-        // Secours : Transcodage FFmpeg en cas de codec audio AC3 incompatible
-        `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}&duration=${movieDurationSec}`,
-      ]
-    : [
-        // Priorité 1 : Transcodage FFmpeg obligatoire si c'est un MKV, AVI, TS, etc.
-        `/api/transcode?type=movie&id=${streamId}&ext=${containerExt || "mkv"}&duration=${movieDurationSec}`,
-        // Secours : Direct Stream
-        `/api/stream?type=movie&id=${streamId}&ext=${containerExt || "mp4"}`,
-      ];
-
   const backdropUrl = info?.backdrop_path?.[0] || info?.backdrop || info?.cover_big || info?.movie_image;
   const posterUrl = info?.movie_image || info?.cover_big || info?.cover;
 
+  // --- SOURCES EXACTEMENT COMME LES SÉRIES (SANS &duration=) ---
+  const movieSources = [
+    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt || "mkv"}`,
+    `/api/stream?type=movie&id=${streamId}&ext=${containerExt || "mp4"}`,
+  ];
+
+  // TMDB Trailer fetch
   useEffect(() => {
     if (!movieTitle || movieTitle.toLowerCase() === "film") return;
 
