@@ -1,102 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { useParams } from "next/navigation";
-import { api } from "@/lib/api";
-import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { Play, ArrowLeft, Star, Heart, X, User, Film, Info, Maximize, Video } from "lucide-react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
+import { Play, Star, Calendar, Clock, X, User, Info, Maximize, Video, ArrowLeft, Heart, Film } from "lucide-react";
+import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { useLibrary } from "@/store/library";
+import { api } from "@/lib/api";
+import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
 
-/**
- * Nettoie le titre du film en retirant les années entre parenthèses à la fin
- */
-function cleanMovieTitle(rawTitle: string): string {
-  if (!rawTitle) return "";
-  return rawTitle.replace(/\s*\(\d{4}\)\s*$/g, "").trim();
-}
-
-/**
- * Extraction du titre propre du film
- */
-function extractMovieTitle(movieInfo: any): string {
-  if (!movieInfo) return "Film";
-
-  const info = movieInfo.info || {};
-  const vodData = movieInfo.movie_data || {};
-
-  const candidates = [
-    info.name,
-    vodData.name,
-    info.title,
-    vodData.title,
-    info.o_name,
-    vodData.o_name,
-  ];
-
-  for (const name of candidates) {
-    if (name && typeof name === "string") {
-      const cleaned = cleanMovieTitle(name);
-      if (cleaned && cleaned.toLowerCase() !== "film" && cleaned.toLowerCase() !== "movie") {
-        return cleaned;
-      }
-    }
-  }
-
-  return "Film";
-}
-
-/**
- * Extraction de la durée en secondes depuis l'API Xtream
- */
-function extractDurationInSeconds(data: any): number {
-  if (!data) return 0;
-  
-  const info = data.info || {};
-  const vodData = data.movie_data || {};
-
-  const secsCandidates = [
-    info.duration_secs,
-    vodData.duration_secs,
-    info.length_secs,
-    vodData.length_secs,
-    info.duration_seconds,
-    vodData.duration_seconds,
-  ];
-  for (const c of secsCandidates) {
-    const num = Number(c);
-    if (!isNaN(num) && num > 0) return num;
-  }
-
-  const strCandidates = [
-    info.duration,
-    vodData.duration,
-    info.runtime,
-    vodData.runtime,
-    info.length,
-    vodData.length,
-  ];
-
-  for (const raw of strCandidates) {
-    if (!raw) continue;
-    const str = String(raw).trim().toLowerCase().replace("min", "").trim();
-    
-    if (str.includes(":")) {
-      const parts = str.split(":").map((p) => parseInt(p, 10) || 0);
-      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-      if (parts.length === 2) return parts[0] * 60 + parts[1];
-    }
-
-    const num = parseInt(str, 10);
-    if (!isNaN(num) && num > 0) {
-      return num < 300 ? num * 60 : num;
-    }
-  }
-
-  return 0;
-}
-
-function FlipActorCard({ name }: { name: string }) {
+const FlipActorCard = ({ name }: { name: string }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
   const [isFlipped, setIsFlipped] = useState(false);
@@ -161,12 +74,10 @@ function FlipActorCard({ name }: { name: string }) {
       </div>
     </div>
   );
-}
+};
 
 export default function MovieDetailPage() {
-  const params = useParams();
-  const id = params?.id as string;
-
+  const { id } = useParams<{ id: string }>();
   const [movieInfo, setMovieInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeMedia, setActiveMedia] = useState<"movie" | "trailer" | null>(null);
@@ -176,7 +87,7 @@ export default function MovieDetailPage() {
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
 
-  const { toggleFav, isFav } = useLibrary();
+  const { isFav, toggleFav } = useLibrary();
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -191,48 +102,9 @@ export default function MovieDetailPage() {
     api
       .vodInfo(id)
       .then((data) => setMovieInfo(data))
-      .catch((err) => console.error("Erreur chargement film:", err))
+      .catch(console.error)
       .finally(() => setLoading(false));
   }, [id]);
-
-  const info = movieInfo?.info || movieInfo?.movie_data || {};
-  const vodData = movieInfo?.movie_data || {};
-  const streamId = vodData.stream_id || info.stream_id || id;
-  const containerExt = vodData.container_extension || info.container_extension || "mp4";
-
-  const knownDurationSec = extractDurationInSeconds(movieInfo);
-  const movieTitle = extractMovieTitle(movieInfo);
-
-  const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
-  const isFavorite = isFav("movie", Number(streamId));
-  const movieYear = info.releasedate?.slice(0, 4) || info.year || "";
-  const tmdbId = info.tmdb_id || vodData.tmdb_id;
-
-  // Récupération de la bande-annonce TMDB
-  useEffect(() => {
-    if (!movieTitle || movieTitle.toLowerCase() === "film") return;
-
-    let isMounted = true;
-    const fetchTmdbTrailer = async () => {
-      try {
-        const res = await fetch(
-          `/api/tmdb-trailer?title=${encodeURIComponent(movieTitle)}&year=${movieYear}&tmdbId=${tmdbId || ""}&lang=${currentLang}`
-        );
-        const data = await res.json();
-        if (isMounted && data?.key) {
-          setTmdbTrailerKey(data.key);
-        }
-      } catch (err) {
-        console.error("Erreur TMDB trailer:", err);
-      }
-    };
-
-    fetchTmdbTrailer();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [movieTitle, movieYear, tmdbId, currentLang]);
 
   const handleFullscreenLandscape = async () => {
     const elem = playerContainerRef.current;
@@ -269,23 +141,44 @@ export default function MovieDetailPage() {
     );
   }
 
-  const rawCast = info.cast || vodData.cast || info.actors || "";
+  const info = movieInfo?.info || movieInfo?.movie_data || {};
+  const vodData = movieInfo?.movie_data || {};
+  const streamId = vodData.stream_id || info.stream_id || id;
+  const containerExt = vodData.container_extension || info.container_extension || "mp4";
+
+  // Même calcul exact de durée que dans la page Séries
+  const movieDurationSec =
+    Number(info?.duration_secs) ||
+    Number(vodData?.duration_secs) ||
+    (info?.duration ? parseInt(info.duration, 10) * 60 : 0) ||
+    (vodData?.duration ? parseInt(vodData.duration, 10) * 60 : 0) ||
+    0;
+
+  // Emploi de cleanName() issu de vos utilitaires
+  const title = cleanName((info?.name as string) || (info?.title as string) || "Film");
+  const rating = ratingNum(info?.rating);
+  const year = yearFrom(info?.releasedate || info?.releasedate, title);
+  const isFavorite = isFav("movie", Number(streamId));
+  const tmdbId = info?.tmdb_id || vodData?.tmdb_id;
+
+  const rawCast = info?.cast || vodData?.cast || info?.actors || "";
   const castList = typeof rawCast === "string"
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : Array.isArray(rawCast) ? rawCast : [];
 
-  // /api/transcode EN PREMIER pour garantir l'encodage audio AAC
+  // Sources configurées à l'identique de la page Séries
   const movieSources = [
-    knownDurationSec > 0
-      ? `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}&duration=${knownDurationSec}`
-      : `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}`,
+    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}`,
     `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
   ];
 
-  const finalTrailerKey = tmdbTrailerKey || info.youtube_trailer || vodData.youtube_trailer;
+  const backdropUrl = info?.backdrop_path?.[0] || info?.backdrop || info?.cover_big || info?.movie_image;
+  const posterUrl = info?.movie_image || info?.cover_big || info?.cover;
+
+  const finalTrailerKey = tmdbTrailerKey || info?.youtube_trailer || vodData?.youtube_trailer;
   const youtubeEmbedUrl = finalTrailerKey
     ? `https://www.youtube-nocookie.com/embed/${finalTrailerKey}?autoplay=1&rel=0`
-    : `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(`${movieTitle} ${movieYear} bande annonce`)}&autoplay=1`;
+    : `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(`${title} bande annonce`)}&autoplay=1`;
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -308,8 +201,8 @@ export default function MovieDetailPage() {
           onClick={() =>
             toggleFav("movie", {
               id: Number(streamId),
-              name: movieTitle,
-              poster: info.movie_image || info.cover_big,
+              name: title,
+              poster: posterUrl,
               ext: containerExt,
             })
           }
@@ -332,31 +225,31 @@ export default function MovieDetailPage() {
         )}
 
         <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 w-full">
-          {(info.movie_image || info.cover_big) && (
+          {posterUrl && (
             <img
-              src={info.movie_image || info.cover_big}
-              alt={movieTitle}
+              src={posterUrl}
+              alt={title}
               className="w-28 sm:w-36 aspect-[2/3] object-cover rounded-xl shadow-2xl border border-white/10 flex-shrink-0"
             />
           )}
 
           <div className="space-y-2 sm:space-y-3 flex-1">
             <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight text-white">
-              {movieTitle}
+              {title}
             </h1>
 
             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 font-medium">
-              {info.rating && (
+              {rating > 0 && (
                 <span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2 py-0.5 rounded-md flex items-center gap-1 font-semibold">
-                  <Star className="w-3 h-3 fill-current" /> {info.rating}
+                  <Star className="w-3 h-3 fill-current" /> {rating.toFixed(1)}
                 </span>
               )}
-              {info.releasedate && (
+              {year && (
                 <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded-md">
-                  {info.releasedate}
+                  {year}
                 </span>
               )}
-              {info.genre && <span className="text-zinc-400">• {info.genre}</span>}
+              {info?.genre && <span className="text-zinc-400">• {info.genre}</span>}
             </div>
 
             {!activeMedia && (
@@ -382,13 +275,13 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
-      {/* Main Grid */}
+      {/* Main Grid avec VideoPlayer identique aux Séries */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {activeMedia && (
           <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
             <div className="flex items-center justify-between px-1">
               <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-400 truncate max-w-[70%]">
-                {activeMedia === "trailer" ? `Bande-annonce : ${movieTitle}` : movieTitle}
+                {activeMedia === "trailer" ? `Bande-annonce : ${title}` : title}
               </h2>
               <div className="flex items-center gap-1">
                 <button
@@ -416,18 +309,18 @@ export default function MovieDetailPage() {
               {activeMedia === "movie" ? (
                 <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
                   <VideoPlayer
-                    key={`${streamId}-movie`}
+                    key={streamId}
                     sources={movieSources}
                     ext="mp4"
                     isLive={false}
-                    title={movieTitle}
-                    knownDuration={knownDurationSec}
+                    title={title}
+                    knownDuration={movieDurationSec}
                   />
                 </div>
               ) : (
                 <iframe
                   src={youtubeEmbedUrl}
-                  title={`Bande-annonce ${movieTitle}`}
+                  title={`Bande-annonce ${title}`}
                   className="w-full h-full border-0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
@@ -444,9 +337,9 @@ export default function MovieDetailPage() {
               <Film className="w-4 h-4 text-indigo-400" /> Synopsis & Histoire
             </h3>
             <p className="text-xs text-zinc-300 leading-relaxed">
-              {info.description || info.plot || "Aucun résumé disponible."}
+              {info?.plot || info?.description || "Aucun résumé disponible."}
             </p>
-            {info.director && (
+            {info?.director && (
               <div className="pt-2 border-t border-white/5 text-xs text-zinc-400">
                 <span className="text-zinc-500 font-semibold">Réalisateur : </span>
                 <span className="text-zinc-200">{info.director}</span>
