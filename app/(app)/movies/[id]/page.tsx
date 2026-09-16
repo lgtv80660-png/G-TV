@@ -129,7 +129,9 @@ function FlipActorCard({ name }: { name: string }) {
 }
 
 export default function MovieDetailPage() {
-  const { id } = useParams();
+  const params = useParams();
+  const id = params?.id as string;
+
   const [movieInfo, setMovieInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -142,20 +144,19 @@ export default function MovieDetailPage() {
   const { toggleFav, isFav } = useLibrary();
 
   useEffect(() => {
-    try {
+    if (typeof window !== "undefined") {
       const savedLang = localStorage.getItem("app_lang") || localStorage.getItem("language") || "fr";
       setCurrentLang(savedLang);
-    } catch (e) {
-      setCurrentLang("fr");
     }
   }, []);
 
   useEffect(() => {
     if (!id) return;
+    setLoading(true);
     api
-      .vodInfo(id as string)
+      .vodInfo(id)
       .then((data) => setMovieInfo(data))
-      .catch(console.error)
+      .catch((err) => console.error("Erreur chargement film:", err))
       .finally(() => setLoading(false));
   }, [id]);
 
