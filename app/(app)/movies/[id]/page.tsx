@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { Play, Star, Calendar, Clock, X, User, Info, Maximize, Video, ArrowLeft, Heart, Film } from "lucide-react";
+import { Play, Star, Clock, X, User, Info, Maximize, Video, ArrowLeft, Heart, Film } from "lucide-react";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { useLibrary } from "@/store/library";
 import { api } from "@/lib/api";
@@ -113,10 +112,7 @@ const FlipActorCard = ({ name }: { name: string }) => {
   );
 };
 
-export default function MovieDetailPage() {
-  const params = useParams();
-  const id = params?.id ? String(params.id) : null;
-
+export function MovieBrowser({ movieId }: { movieId: string }) {
   const [movieInfo, setMovieInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -137,11 +133,11 @@ export default function MovieDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (!id) return;
+    if (!movieId) return;
     setLoading(true);
     setError(false);
     api
-      .vodInfo(id)
+      .vodInfo(movieId)
       .then((data) => {
         if (data) {
           setMovieInfo(data);
@@ -154,7 +150,7 @@ export default function MovieDetailPage() {
         setError(true);
       })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [movieId]);
 
   const handleFullscreenLandscape = async () => {
     const elem = playerContainerRef.current;
@@ -181,7 +177,7 @@ export default function MovieDetailPage() {
     lastTapRef.current = now;
   };
 
-  if (loading || !id) {
+  if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-[#0b0c10]">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
@@ -202,7 +198,7 @@ export default function MovieDetailPage() {
 
   const info = movieInfo?.info || movieInfo?.movie_data || {};
   const vodData = movieInfo?.movie_data || {};
-  const streamId = vodData?.stream_id || info?.stream_id || id;
+  const streamId = vodData?.stream_id || info?.stream_id || movieId;
   const containerExt = String(vodData?.container_extension || info?.container_extension || "mp4").toLowerCase();
 
   const movieTitle = getCleanTitle(movieInfo);
