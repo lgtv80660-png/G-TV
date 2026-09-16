@@ -7,7 +7,51 @@ import { Play, Star, Calendar, Clock, X, User, Info, Maximize, Video, ArrowLeft,
 import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { useLibrary } from "@/store/library";
 import { api } from "@/lib/api";
-import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
+import { ratingNum, yearFrom, cn } from "@/lib/utils";
+
+// 1. Extraction 100% autonome du titre (sans utiliser de fonctions externes qui buggent)
+function getCleanTitle(data: any): string {
+  if (!data) return "Film";
+  const info = data.info || {};
+  const vod = data.movie_data || {};
+  
+  const rawTitle = info.name || vod.name || info.title || vod.title || info.o_name || "Film";
+  
+  // Retire les années à la fin du titre comme "(2022)" et les espaces en trop
+  const cleaned = String(rawTitle).replace(/\s*\(\d{4}\)\s*$/g, "").trim();
+  return cleaned || "Film";
+}
+
+// 2. Extraction ultra-robuste de la durée en secondes (règle le bug des 11 secondes)
+function getDurationInSeconds(data: any): number {
+  if (!data) return 0;
+  const info = data.info || {};
+  const vod = data.movie_data || {};
+
+  // Vérifie d'abord si on a directement des secondes
+  const secKeys = ['duration_secs', 'length_secs', 'duration_seconds'];
+  for (const key of secKeys) {
+    if (info[key] && !isNaN(Number(info[key]))) return Number(info[key]);
+    if (vod[key] && !isNaN(Number(vod[key]))) return Number(vod[key]);
+  }
+
+  // Sinon, on convertit le format texte (ex: "02:22:00" ou "120 min")
+  const strDur = info.duration || vod.duration || info.runtime || vod.runtime;
+  if (strDur) {
+    const cleanStr = String(strDur).toLowerCase().replace(/min/g, '').trim();
+    
+    if (cleanStr.includes(':')) {
+      const parts = cleanStr.split(':').map(Number);
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+    } else {
+      const num = Number(cleanStr);
+      if (!isNaN(num)) return num < 300 ? num * 60 : num;
+    }
+  }
+  
+  return 0;
+}
 
 const FlipActorCard = ({ name }: { name: string }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -146,48 +190,12 @@ export default function MovieDetailPage() {
   const streamId = vodData.stream_id || info.stream_id || id;
   const containerExt = vodData.container_extension || info.container_extension || "mp4";
 
-  // Extraction propre du titre du film (évite de mettre "Film")
-  const rawTitle =
-    info?.name ||
-    vodData?.name ||
-    info?.title ||
-    vodData?.title ||
-    info?.movie_name ||
-    vodData?.movie_name ||
-    "";
-
-  const title = cleanName(rawTitle);
-
-  // Extraction de la durée en secondes (identique au mode séries)
-  const rawDuration =
-    info?.duration_secs ||
-    vodData?.duration_secs ||
-    info?.length_secs ||
-    vodData?.length_secs ||
-    info?.duration_seconds ||
-    vodData?.duration_seconds;
-
-  let movieDurationSec = Number(rawDuration) || 0;
-
-  if (!movieDurationSec) {
-    const strDur = info?.duration || vodData?.duration || info?.runtime || vodData?.runtime;
-    if (strDur) {
-      const str = String(strDur).trim().toLowerCase().replace("min", "").trim();
-      if (str.includes(":")) {
-        const parts = str.split(":").map((p) => parseInt(p, 10) || 0);
-        if (parts.length === 3) movieDurationSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
-        else if (parts.length === 2) movieDurationSec = parts[0] * 60 + parts[1];
-      } else {
-        const parsed = parseInt(str, 10);
-        if (!isNaN(parsed) && parsed > 0) {
-          movieDurationSec = parsed < 300 ? parsed * 60 : parsed;
-        }
-      }
-    }
-  }
+  // Extraction propre garantie : Titre et Durée
+  const movieTitle = getCleanTitle(movieInfo);
+  const movieDurationSec = getDurationInSeconds(movieInfo);
 
   const rating = ratingNum(info?.rating);
-  const year = yearFrom(info?.releasedate || info?.releasedate, title);
+  const year = yearFrom(info?.releasedate || info?.releasedate, movieTitle);
   const isFavorite = isFav("movie", Number(streamId));
   const tmdbId = info?.tmdb_id || vodData?.tmdb_id;
 
@@ -196,19 +204,39 @@ export default function MovieDetailPage() {
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : Array.isArray(rawCast) ? rawCast : [];
 
-  // Sources configurées à l'identique de la page Séries
+  // Sources configurées EXACTEMENT comme dans les Séries (sans rajouter de &duration= dans l'URL)
   const movieSources = [
-    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}&duration=${movieDurationSec}`,
-    `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
+    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt || "mkv"}`,
+    `/api/stream?type=movie&id=${streamId}&ext=${containerExt || "mp4"}`,
   ];
 
   const backdropUrl = info?.backdrop_path?.[0] || info?.backdrop || info?.cover_big || info?.movie_image;
   const posterUrl = info?.movie_image || info?.cover_big || info?.cover;
 
+  // TMDB Trailer fetch
+  useEffect(() => {
+    if (!movieTitle || movieTitle.toLowerCase() === "film") return;
+
+    let isMounted = true;
+    const fetchTmdbTrailer = async () => {
+      try {
+        const res = await fetch(
+          `/api/tmdb-trailer?title=${encodeURIComponent(movieTitle)}&year=${year}&tmdbId=${tmdbId || ""}&lang=${currentLang}`
+        );
+        const data = await res.json();
+        if (isMounted && data?.key) setTmdbTrailerKey(data.key);
+      } catch (err) {
+        console.error("Erreur TMDB trailer:", err);
+      }
+    };
+    fetchTmdbTrailer();
+    return () => { isMounted = false; };
+  }, [movieTitle, year, tmdbId, currentLang]);
+
   const finalTrailerKey = tmdbTrailerKey || info?.youtube_trailer || vodData?.youtube_trailer;
   const youtubeEmbedUrl = finalTrailerKey
     ? `https://www.youtube-nocookie.com/embed/${finalTrailerKey}?autoplay=1&rel=0`
-    : `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(`${title} bande annonce`)}&autoplay=1`;
+    : `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(`${movieTitle} bande annonce`)}&autoplay=1`;
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -231,7 +259,7 @@ export default function MovieDetailPage() {
           onClick={() =>
             toggleFav("movie", {
               id: Number(streamId),
-              name: title,
+              name: movieTitle,
               poster: posterUrl,
               ext: containerExt,
             })
@@ -258,14 +286,14 @@ export default function MovieDetailPage() {
           {posterUrl && (
             <img
               src={posterUrl}
-              alt={title}
+              alt={movieTitle}
               className="w-28 sm:w-36 aspect-[2/3] object-cover rounded-xl shadow-2xl border border-white/10 flex-shrink-0"
             />
           )}
 
           <div className="space-y-2 sm:space-y-3 flex-1">
             <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight text-white">
-              {title}
+              {movieTitle}
             </h1>
 
             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 font-medium">
@@ -280,6 +308,11 @@ export default function MovieDetailPage() {
                 </span>
               )}
               {info?.genre && <span className="text-zinc-400">• {info.genre}</span>}
+              {movieDurationSec > 0 && (
+                <span className="flex items-center gap-1 text-zinc-400">
+                  <Clock className="w-3 h-3" /> {Math.floor(movieDurationSec / 60)} min
+                </span>
+              )}
             </div>
 
             {!activeMedia && (
@@ -311,7 +344,7 @@ export default function MovieDetailPage() {
           <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
             <div className="flex items-center justify-between px-1">
               <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-400 truncate max-w-[70%]">
-                {activeMedia === "trailer" ? `Bande-annonce : ${title}` : title}
+                {activeMedia === "trailer" ? `Bande-annonce : ${movieTitle}` : movieTitle}
               </h2>
               <div className="flex items-center gap-1">
                 <button
@@ -339,18 +372,18 @@ export default function MovieDetailPage() {
               {activeMedia === "movie" ? (
                 <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
                   <VideoPlayer
-                    key={streamId}
+                    key={`${streamId}-movie`}
                     sources={movieSources}
                     ext="mp4"
                     isLive={false}
-                    title={title}
+                    title={movieTitle}
                     knownDuration={movieDurationSec}
                   />
                 </div>
               ) : (
                 <iframe
                   src={youtubeEmbedUrl}
-                  title={`Bande-annonce ${title}`}
+                  title={`Bande-annonce ${movieTitle}`}
                   className="w-full h-full border-0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
