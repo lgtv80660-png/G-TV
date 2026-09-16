@@ -9,16 +9,17 @@ import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
 /**
- * Extraction robuste de la durée.
- * Si aucune durée n'est trouvée dans l'API Xtream, on applique 7200s (2h)
- * pour éviter que le lecteur se mette en mode "Live" sur Railway.
+ * Extraction précise de la durée en secondes depuis les données Xtream.
+ * Si aucune durée valide n'est trouvée, retourne 0 pour que le VideoPlayer
+ * utilise la durée réelle détectée par le navigateur (onLoadedMetadata).
  */
 function extractDurationInSeconds(data: any): number {
-  if (!data) return 7200;
+  if (!data) return 0;
   
   const info = data.info || {};
   const vodData = data.movie_data || {};
 
+  // 1. Clés numériques directes
   const secsCandidates = [
     info.duration_secs,
     vodData.duration_secs,
@@ -32,6 +33,7 @@ function extractDurationInSeconds(data: any): number {
     if (!isNaN(num) && num > 0) return num;
   }
 
+  // 2. Clés sous forme de chaîne de caractères (ex: "01:54:30", "114 min", "114")
   const strCandidates = [
     info.duration,
     vodData.duration,
@@ -45,19 +47,27 @@ function extractDurationInSeconds(data: any): number {
     if (!raw) continue;
     const str = String(raw).trim().toLowerCase().replace("min", "").trim();
     
+    // Format "HH:MM:SS" ou "MM:SS"
     if (str.includes(":")) {
       const parts = str.split(":").map((p) => parseInt(p, 10) || 0);
-      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-      if (parts.length === 2) return parts[0] * 3600 + parts[1] * 60;
+      if (parts.length === 3) {
+        return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      }
+      if (parts.length === 2) {
+        return parts[0] * 60 + parts[1];
+      }
     }
 
+    // Nombre simple (minutes ou secondes)
     const num = parseInt(str, 10);
     if (!isNaN(num) && num > 0) {
+      // Si la valeur est inférieure à 300, ce sont des minutes (ex: 120 -> 7200s)
       return num < 300 ? num * 60 : num;
     }
   }
 
-  return 7200; // Fallback 2 heures
+  // Retourne 0 si aucune durée n'est fournie par l'API (évite de forcer 2h)
+  return 0;
 }
 
 function getTrailerSearchQuery(title: string, year: string, lang: string = "fr"): string {
@@ -213,6 +223,7 @@ export default function MovieDetailPage() {
   const streamId = vodData.stream_id || info.stream_id || id;
   const containerExt = vodData.container_extension || info.container_extension || "mp4";
 
+  // Durée précise extraite depuis l'API Xtream
   const knownDurationSec = extractDurationInSeconds(movieInfo);
 
   const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
@@ -228,11 +239,12 @@ export default function MovieDetailPage() {
     : Array.isArray(rawCast) ? rawCast : [];
 
   const movieSources = [
-    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}&duration=${knownDurationSec}`,
+    knownDurationSec > 0
+      ? `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}&duration=${knownDurationSec}`
+      : `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}`,
     `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
   ];
 
-  // URL iframe propre pour YouTube
   const youtubeEmbedUrl = youtubeTrailerId
     ? `https://www.youtube-nocookie.com/embed/${youtubeTrailerId}?autoplay=1&rel=0`
     : `https://www.youtube-nocookie.com/embed?listType=search&list=${getTrailerSearchQuery(movieTitle, movieYear, currentLang)}&autoplay=1`;
@@ -332,7 +344,7 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
-      {/* Main Grid : LECTEUR UNIQUE (VideoPlayer pour film, Iframe pour Trailer) */}
+      {/* Main Grid : VideoPlayer pour le film, iframe YouTube pour le Trailer */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {activeMedia && (
           <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
@@ -364,7 +376,6 @@ export default function MovieDetailPage() {
               className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5 cursor-pointer"
             >
               {activeMedia === "movie" ? (
-                /* Mode Film : Utilise le VideoPlayer transcodé */
                 <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
                   <VideoPlayer
                     key={`${streamId}-movie`}
@@ -376,7 +387,6 @@ export default function MovieDetailPage() {
                   />
                 </div>
               ) : (
-                /* Mode Bande-Annonce : Utilise l'iframe YouTube directement dans le conteneur du lecteur */
                 <iframe
                   src={youtubeEmbedUrl}
                   title={`Bande-annonce ${movieTitle}`}
