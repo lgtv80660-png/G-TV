@@ -136,6 +136,13 @@ export default function MovieDetailPage() {
   const streamId = vodData.stream_id || info.stream_id || id;
   const containerExt = vodData.container_extension || info.container_extension || "mp4";
 
+  // Calcul de la durée exacte du film en secondes pour le lecteur
+  const knownDurationSec =
+    Number(info.duration_secs) ||
+    Number(vodData.duration_secs) ||
+    (info.duration ? parseInt(info.duration) * 60 : 0) ||
+    0;
+
   const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
   const isFavorite = isFav("movie", Number(streamId));
   const movieTitle = info.name || info.title || "Film";
@@ -264,14 +271,13 @@ export default function MovieDetailPage() {
                 <VideoPlayer
                   key={streamId}
                   sources={[
-                    // 1. Transcodeur FFmpeg sur Railway en premier choix
                     `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}`,
-                    // 2. Stream direct en fallback
                     `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
                   ]}
                   ext="mp4"
                   isLive={false}
                   title={movieTitle}
+                  knownDuration={knownDurationSec}
                 />
               </div>
             </div>
