@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { Play, ArrowLeft, Star, Heart, X, User, Film, Info, Maximize, Youtube } from "lucide-react";
+import { Play, ArrowLeft, Star, Heart, X, User, Film, Info, Maximize, Video } from "lucide-react";
 import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
@@ -310,7 +310,7 @@ export default function MovieDetailPage() {
                   onClick={handleOpenTrailer}
                   className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs px-4 py-2.5 rounded-xl border border-white/10 transition-all hover:scale-105"
                 >
-                  <Youtube className="w-4 h-4 text-red-500 fill-current" />
+                  <Video className="w-4 h-4 text-red-500 fill-current" />
                   Bande-annonce
                 </button>
               </div>
