@@ -8,6 +8,30 @@ import { Play, ArrowLeft, Star, Heart, X, User, Film, Info, Maximize } from "luc
 import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
+function parseDurationToSeconds(info: any, vodData: any): number {
+  if (info?.duration_secs && Number(info.duration_secs) > 0) {
+    return Number(info.duration_secs);
+  }
+  if (vodData?.duration_secs && Number(vodData.duration_secs) > 0) {
+    return Number(vodData.duration_secs);
+  }
+
+  const raw = info?.duration || vodData?.duration;
+  if (!raw) return 0;
+
+  if (typeof raw === "number") return raw > 300 ? raw : raw * 60;
+
+  const str = String(raw).trim();
+  if (str.includes(":")) {
+    const parts = str.split(":").map((p) => parseInt(p, 10) || 0);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+  }
+
+  const num = parseInt(str, 10);
+  return isNaN(num) ? 0 : num > 300 ? num : num * 60;
+}
+
 const FlipActorCard = ({ name }: { name: string }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
@@ -136,12 +160,8 @@ export default function MovieDetailPage() {
   const streamId = vodData.stream_id || info.stream_id || id;
   const containerExt = vodData.container_extension || info.container_extension || "mp4";
 
-  // Calcul de la durée exacte du film en secondes pour le lecteur
-  const knownDurationSec =
-    Number(info.duration_secs) ||
-    Number(vodData.duration_secs) ||
-    (info.duration ? parseInt(info.duration) * 60 : 0) ||
-    0;
+  // Extraction exacte de la durée du film en secondes
+  const knownDurationSec = parseDurationToSeconds(info, vodData);
 
   const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
   const isFavorite = isFav("movie", Number(streamId));
