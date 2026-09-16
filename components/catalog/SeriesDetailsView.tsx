@@ -425,10 +425,13 @@ export default function SeriesDetailsView() {
                       `/api/stream?type=series&id=${activeEpisode.id}&ext=${
                         activeEpisode.container_extension || "mp4"
                       }`,
+                      `/api/transcode?type=series&id=${activeEpisode.id}&ext=${
+                        activeEpisode.container_extension || "mkv"
+                      }`,
                     ]}
                     ext={activeEpisode.container_extension || "mp4"}
                     isLive={false}
-                    title={`${title} - S${activeEpisode.season || activeSeasonKey}E${activeEpisode.episode_num}`}
+                    title={`${cleanName(title)} - S${activeEpisode.season || activeSeasonKey}E${activeEpisode.episode_num}`}
                   />
                 </div>
               </div>
