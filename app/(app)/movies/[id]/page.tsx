@@ -160,7 +160,7 @@ export default function MovieDetailPage() {
   const streamId = vodData.stream_id || info.stream_id || id;
   const containerExt = vodData.container_extension || info.container_extension || "mp4";
 
-  // Extraction exacte de la durée du film en secondes
+  // Extraction propre de la durée totale en secondes
   const knownDurationSec = parseDurationToSeconds(info, vodData);
 
   const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
