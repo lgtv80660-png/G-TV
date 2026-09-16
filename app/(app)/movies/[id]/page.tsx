@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, use } from "react";
 import Link from "next/link";
 import { Play, Star, Clock, X, User, Info, Maximize, Video, ArrowLeft, Heart, Film } from "lucide-react";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
@@ -8,6 +8,7 @@ import { useLibrary } from "@/store/library";
 import { api } from "@/lib/api";
 import { ratingNum, yearFrom, cleanName } from "@/lib/utils";
 
+// 1. Extraction autonome et sécurisée du titre
 function getCleanTitle(data: any): string {
   if (!data) return "Film";
   const info = data?.info || {};
@@ -17,6 +18,7 @@ function getCleanTitle(data: any): string {
   return cleaned ? cleanName(cleaned) : "Film";
 }
 
+// 2. Extraction sécurisée de la durée en secondes
 function getDurationInSeconds(data: any): number {
   if (!data) return 0;
   const info = data?.info || {};
@@ -112,7 +114,11 @@ const FlipActorCard = ({ name }: { name: string }) => {
   );
 };
 
-export function MovieBrowser({ movieId }: { movieId: string }) {
+export default function MovieDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  // Dépaquetage propre de la promesse des paramètres pour Next.js 15
+  const resolvedParams = use(params);
+  const movieId = resolvedParams?.id;
+
   const [movieInfo, setMovieInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
