@@ -9,11 +9,6 @@ export const dynamic = "force-dynamic";
 const UA = "VLC/3.0.20 LibVLC/3.0.20";
 const FFMPEG = process.env.FFMPEG_PATH || "ffmpeg";
 
-/**
- * Route de transcodage dynamique via FFmpeg.
- * Copie la piste vidéo sans ré-encodage (très léger en CPU)
- * et convertit l'audio AC-3/EAC-3/DTS en AAC stéréo universel pour navigateur web.
- */
 export async function GET(req: Request) {
   let creds;
   try {
@@ -43,9 +38,9 @@ export async function GET(req: Request) {
     "-user_agent", UA,
     ...(start > 0 ? ["-ss", String(start)] : []),
     "-i", input,
-    "-c:v", "copy", // Ne touche pas à la vidéo (ultra fluide)
-    "-c:a", "aac",  // Force le codec audio AAC compatible HTML5
-    "-ac", "2",     // Redimensionne en 2 canaux stéréo
+    "-c:v", "copy", // Video inchangée (aucun lag CPU)
+    "-c:a", "aac",  // Audio transcodé en AAC pour navigateurs
+    "-ac", "2",
     "-movflags", "frag_keyframe+empty_moov+default_base_moof",
     "-f", "mp4",
     "pipe:1",
@@ -63,25 +58,20 @@ export async function GET(req: Request) {
     start(controller) {
       ff.stdout.on("data", (chunk) => {
         try {
-          // Empêche l'erreur si la connexion a été coupée par le client
           if (controller.desiredSize !== null) {
             controller.enqueue(chunk);
           }
         } catch {
-          // Annulation silencieuse
+          // Ignore disconnection error
         }
       });
 
       ff.stdout.on("end", () => {
-        try {
-          controller.close();
-        } catch {}
+        try { controller.close(); } catch {}
       });
 
       ff.on("error", (err) => {
-        try {
-          controller.error(err);
-        } catch {}
+        try { controller.error(err); } catch {}
       });
     },
     cancel() {
