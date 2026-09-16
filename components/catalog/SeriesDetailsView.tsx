@@ -13,6 +13,7 @@ import { useLibrary } from "@/store/library";
 import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
 import type { Episode } from "@/lib/xtream/types";
 
+// Composant pour l'image d'épisode
 function EpisodeImage({
   ep,
   seriesTitle,
@@ -98,6 +99,7 @@ function EpisodeImage({
   );
 }
 
+// Carte d'acteur 3D Flip
 function FlipActorCard({ name }: { name: string }) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
@@ -216,6 +218,7 @@ export default function SeriesDetailsView() {
 
   const title = (info?.name as string) || (info?.title as string) || "Série";
 
+  // LOGIQUE DE RECUPERATION DYNAMIQUE DE L'AFFICHE DE LA SAISON SELECTIONNEE DEPUIS TMDB
   useEffect(() => {
     if (!activeSeasonKey) return;
 
@@ -233,6 +236,7 @@ export default function SeriesDetailsView() {
       try {
         let realTmdbId = info?.tmdb_id;
 
+        // 1. Recherche du TMDB ID via le nom si non présent
         if (!realTmdbId && cleanTitle) {
           const searchRes = await fetch(
             `/api/tmdb?path=search/tv&query=${encodeURIComponent(cleanTitle)}&language=fr-FR`
@@ -246,6 +250,7 @@ export default function SeriesDetailsView() {
           return;
         }
 
+        // 2. Récupération de l'affiche spécifique de la saison
         const seasonRes = await fetch(
           `/api/tmdb?path=tv/${realTmdbId}/season/${seasonNumber}&language=fr-FR`
         ).then((r) => r.json());
@@ -417,12 +422,13 @@ export default function SeriesDetailsView() {
                   <VideoPlayer
                     key={activeEpisode.id}
                     sources={[
-                      `/api/stream?type=series&id=${activeEpisode.id}&ext=${activeEpisode.container_extension || "mp4"}`,
-                      `/api/transcode?type=series&id=${activeEpisode.id}`,
+                      `/api/stream?type=series&id=${activeEpisode.id}&ext=${
+                        activeEpisode.container_extension || "mp4"
+                      }`,
                     ]}
                     ext={activeEpisode.container_extension || "mp4"}
                     isLive={false}
-                    title={`${cleanName(title)} - S${activeEpisode.season || activeSeasonKey}E${activeEpisode.episode_num}`}
+                    title={`${title} - S${activeEpisode.season || activeSeasonKey}E${activeEpisode.episode_num}`}
                   />
                 </div>
               </div>
