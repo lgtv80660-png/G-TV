@@ -13,7 +13,6 @@ import { useLibrary } from "@/store/library";
 import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
 import type { Episode } from "@/lib/xtream/types";
 
-// Composant pour charger l'image d'épisode (Xtream -> TMDB -> Fallback Cover)
 function EpisodeImage({
   ep,
   seriesTitle,
@@ -61,7 +60,6 @@ function EpisodeImage({
   );
 }
 
-// Carte d'acteur 3D Flip
 const FlipActorCard = ({ name }: { name: string }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
@@ -196,6 +194,13 @@ export default function SeriesDetailPage() {
     ? info.cast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : [];
 
+  // Durée de l'épisode actif en secondes pour la barre de recherche
+  const epDurationSec = activeEpisode
+    ? Number(activeEpisode.info?.duration_secs) ||
+      (activeEpisode.info?.duration ? parseInt(activeEpisode.info.duration) * 60 : 0) ||
+      0
+    : 0;
+
   return (
     <div className="min-h-screen bg-ink-950 text-white p-3 sm:p-6 space-y-6">
       <style jsx global>{`
@@ -304,11 +309,9 @@ export default function SeriesDetailPage() {
                   <VideoPlayer
                     key={activeEpisode.id}
                     sources={[
-                      // 1. Forcer le passage par le transcodeur FFmpeg sur Railway (Convertit Dolby AC-3 -> AAC)
                       `/api/transcode?type=series&id=${activeEpisode.id}&ext=${
                         activeEpisode.container_extension || "mkv"
                       }`,
-                      // 2. Stream direct en fallback
                       `/api/stream?type=series&id=${activeEpisode.id}&ext=${
                         activeEpisode.container_extension || "mp4"
                       }`,
@@ -316,6 +319,7 @@ export default function SeriesDetailPage() {
                     ext="mp4"
                     isLive={false}
                     title={`${title} - S${activeEpisode.season || activeSeasonKey}E${activeEpisode.episode_num}`}
+                    knownDuration={epDurationSec}
                   />
                 </div>
               </div>
