@@ -9,6 +9,50 @@ import { useLibrary } from "@/store/library";
 import { api } from "@/lib/api";
 import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
 
+// 1. Extraction 100% autonome du titre
+function getCleanTitle(data: any): string {
+  if (!data) return "Film";
+  const info = data.info || {};
+  const vod = data.movie_data || {};
+  
+  const rawTitle = info.name || vod.name || info.title || vod.title || info.o_name || "Film";
+  
+  // Retire les années à la fin du titre comme "(2022)" et les espaces en trop
+  const cleaned = String(rawTitle).replace(/\s*\(\d{4}\)\s*$/g, "").trim();
+  return cleaned || "Film";
+}
+
+// 2. Extraction ultra-robuste de la durée en secondes
+function getDurationInSeconds(data: any): number {
+  if (!data) return 0;
+  const info = data.info || {};
+  const vod = data.movie_data || {};
+
+  // Vérifie d'abord si on a directement des secondes
+  const secKeys = ['duration_secs', 'length_secs', 'duration_seconds'];
+  for (const key of secKeys) {
+    if (info[key] && !isNaN(Number(info[key]))) return Number(info[key]);
+    if (vod[key] && !isNaN(Number(vod[key]))) return Number(vod[key]);
+  }
+
+  // Sinon, on convertit le format texte (ex: "02:22:00" ou "120 min")
+  const strDur = info.duration || vod.duration || info.runtime || vod.runtime;
+  if (strDur) {
+    const cleanStr = String(strDur).toLowerCase().replace(/min/g, '').trim();
+    
+    if (cleanStr.includes(':')) {
+      const parts = cleanStr.split(':').map(Number);
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+    } else {
+      const num = Number(cleanStr);
+      if (!isNaN(num)) return num < 300 ? num * 60 : num;
+    }
+  }
+  
+  return 0;
+}
+
 const FlipActorCard = ({ name }: { name: string }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
@@ -141,24 +185,13 @@ export default function MovieDetailPage() {
     );
   }
 
-  // --- LOGIQUE EXTRAITE EXACTEMENT COMME DANS LES SÉRIES ---
-  const info = movieInfo?.info || movieInfo?.movie_data || (movieInfo && !movieInfo.movie_data ? movieInfo : {}) || {};
+  const info = movieInfo?.info || movieInfo?.movie_data || {};
   const vodData = movieInfo?.movie_data || {};
-  
-  const streamId = vodData?.stream_id || info?.stream_id || id;
-  const containerExt = vodData?.container_extension || info?.container_extension || "mp4";
+  const streamId = vodData.stream_id || info.stream_id || id;
+  const containerExt = (vodData.container_extension || info.container_extension || "mp4").toLowerCase();
 
-  // Extraction propre du Titre (comme dans Séries)
-  const rawTitle = (info?.name as string) || (info?.title as string) || (info?.o_name as string) || "Film";
-  const movieTitle = cleanName(rawTitle);
-
-  // Extraction propre de la Durée (comme dans Séries)
-  const movieDurationSec =
-    Number(info?.duration_secs) ||
-    Number(vodData?.duration_secs) ||
-    (info?.duration ? parseInt(String(info.duration).replace(/\D/g, "")) * 60 : 0) ||
-    (vodData?.duration ? parseInt(String(vodData.duration).replace(/\D/g, "")) * 60 : 0) ||
-    0;
+  const movieTitle = getCleanTitle(movieInfo);
+  const movieDurationSec = getDurationInSeconds(movieInfo);
 
   const rating = ratingNum(info?.rating);
   const year = yearFrom(info?.releasedate || info?.releasedate, movieTitle);
@@ -170,16 +203,25 @@ export default function MovieDetailPage() {
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : Array.isArray(rawCast) ? rawCast : [];
 
+  // ==========================================
+  // LOGIQUE STRICTE POUR ÉVITER LE CRASH VERCEL
+  // ==========================================
+  const isNativeSupported = ["mp4", "m3u8"].includes(containerExt);
+
+  const movieSources = isNativeSupported
+    ? [
+        // Flux natif uniquement pour mp4/m3u8
+        `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`
+      ]
+    : [
+        // Transcodage FFmpeg uniquement pour MKV/AVI/TS
+        // PAS DE &duration DANS L'URL (cela cassait la vidéo à 11s)
+        `/api/transcode?type=movie&id=${streamId}&ext=${containerExt || "mkv"}`
+      ];
+
   const backdropUrl = info?.backdrop_path?.[0] || info?.backdrop || info?.cover_big || info?.movie_image;
   const posterUrl = info?.movie_image || info?.cover_big || info?.cover;
 
-  // --- SOURCES EXACTEMENT COMME LES SÉRIES (SANS &duration=) ---
-  const movieSources = [
-    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt || "mkv"}`,
-    `/api/stream?type=movie&id=${streamId}&ext=${containerExt || "mp4"}`,
-  ];
-
-  // TMDB Trailer fetch
   useEffect(() => {
     if (!movieTitle || movieTitle.toLowerCase() === "film") return;
 
