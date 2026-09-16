@@ -18,7 +18,6 @@ const AUTO_SUB_LANGS = [
   { code: "fa", label: "فارسی (Perse)" },
 ];
 
-/** Convert SubRip (.srt) text to WebVTT so the browser can render it. */
 function srtToVtt(text: string): string {
   const body = text
     .replace(/\r+/g, "")
@@ -79,16 +78,13 @@ export function VideoPlayer({
   const [capMenu, setCapMenu] = useState(false);
   const [audioMenu, setAudioMenu] = useState(false);
 
-  // Audio Tracks (hls.js / Native)
   const [audioTracks, setAudioTracks] = useState<Array<{ id: number; label: string }>>([]);
   const [activeAudio, setActiveAudio] = useState<number>(0);
 
-  // Subtitle Tracks (Native + OpenSubtitles)
   const [trackList, setTrackList] = useState<Array<{ index: number; label: string; lang?: string }>>([]);
-  const [activeTrack, setActiveTrack] = useState<number>(-1); // -1 = off
+  const [activeTrack, setActiveTrack] = useState<number>(-1);
   const [loadingSubLang, setLoadingSubLang] = useState<string | null>(null);
 
-  // pseudo-seek for remuxed streams
   const [seekBase, setSeekBase] = useState(0);
   const [scrub, setScrub] = useState<number | null>(null);
 
@@ -119,7 +115,6 @@ export function VideoPlayer({
     [sources.length],
   );
 
-  // Initialisation du moteur de lecture
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
@@ -165,9 +160,9 @@ export function VideoPlayer({
         const v = videoRef.current;
         if (cancelled || !v || v.readyState >= 3) return;
         if (!isLastSource) {
-          tryFallback("Stream slow - backup source");
+          tryFallback("Chargement lent — bascule sur la source secondaire...");
         } else {
-          setError("Stream non disponible pour le moment.");
+          setError("Flux indisponible pour le moment.");
         }
       },
       isLastSource ? 30000 : 12000,
@@ -181,7 +176,6 @@ export function VideoPlayer({
     };
   }, [src, ext, isLive, tryFallback, srcIdx, sources.length]);
 
-  // Événements élément HTML5 Video
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -208,8 +202,7 @@ export function VideoPlayer({
       }
     };
     const onEnd = () => onEnded?.();
-    const onErr = () =>
-      tryFallback("Erreur de lecture du média.");
+    const onErr = () => tryFallback("Format non supporté directement, tentative de transcodage...");
 
     v.addEventListener("play", onPlay);
     v.addEventListener("pause", onPause);
@@ -367,7 +360,7 @@ export function VideoPlayer({
         }, 300);
       }
     } catch (err) {
-      console.error("Erreur de sous-titres externes:", err);
+      console.error("Erreur sous-titres externes:", err);
     } finally {
       setLoadingSubLang(null);
       setCapMenu(false);
@@ -437,7 +430,7 @@ export function VideoPlayer({
       onMouseMove={showControls}
       onClick={showControls}
       className={cn(
-        "group relative h-dvh w-full select-none bg-black",
+        "group relative h-full w-full select-none bg-black overflow-hidden",
         controlsOn ? "cursor-default" : "cursor-none",
       )}
     >
@@ -584,7 +577,6 @@ export function VideoPlayer({
           </div>
 
           <div className="ml-auto flex items-center gap-3 sm:gap-4">
-            {/* BOUTON AUDIO MULTI-LANGUES */}
             {audioTracks.length > 0 && (
               <div className="relative">
                 <button
@@ -615,7 +607,6 @@ export function VideoPlayer({
               </div>
             )}
 
-            {/* SÉLECTEUR SOUS-TITRES */}
             <div className="relative">
               <button
                 onClick={() => { setCapMenu((v) => !v); setAudioMenu(false); setSpeedMenu(false); }}
