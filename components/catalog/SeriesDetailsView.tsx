@@ -13,7 +13,7 @@ import { useLibrary } from "@/store/library";
 import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
 import type { Episode } from "@/lib/xtream/types";
 
-// Composant pour l'image d'épisode
+// Composant pour charger l'image d'épisode (Xtream -> TMDB -> Fallback Cover)
 function EpisodeImage({
   ep,
   seriesTitle,
@@ -30,68 +30,30 @@ function EpisodeImage({
   const [imgSrc, setImgSrc] = useState<string | null>(ep.info?.movie_image || null);
 
   useEffect(() => {
-    if (ep.info?.movie_image) {
-      setImgSrc(ep.info.movie_image);
-      return;
-    }
+    if (ep.info?.movie_image) return;
 
     let isMounted = true;
-    const seasonNumber = seasonKey.replace(/\D/g, "") || ep.season || "1";
-
-    let episodeNumber = ep.episode_num;
-    if (!episodeNumber && ep.title) {
-      const match = ep.title.match(/E(\d+)/i);
-      if (match) episodeNumber = match[1];
-    }
-    episodeNumber = episodeNumber || "1";
-
-    let cleanTitle = seriesTitle || "";
-    cleanTitle = cleanTitle
-      .replace(/\./g, " ")
-      .replace(/S\d+E\d+.*/i, "")
-      .replace(/(VOSTFR|FRENCH|MULTI|720p|1080p|2160p|WEB-DL|WEBRip|x264|x265|AMZN|NF|-FANATIK|-EXTREME).*/i, "")
-      .replace(/\(\d{4}\)/g, "")
-      .trim();
+    const cleanSeason = seasonKey.replace(/\D/g, "") || "1";
 
     fetch(
-      `/api/tmdb?path=search/tv&query=${encodeURIComponent(cleanTitle)}&language=fr-FR`
+      `/api/episode-image?tmdbId=${tmdbId || ""}&show=${encodeURIComponent(seriesTitle)}&season=${cleanSeason}&episode=${ep.episode_num}`
     )
       .then((res) => res.json())
       .then((data) => {
-        if (!isMounted) return;
-        const realId = data?.results?.[0]?.id;
-        if (realId) {
-          return fetch(`/api/tmdb?path=tv/${realId}/season/${seasonNumber}/episode/${episodeNumber}&language=fr-FR`)
-            .then((r) => r.json())
-            .then((epData) => {
-              if (isMounted && epData?.still_path) {
-                setImgSrc(`https://image.tmdb.org/t/p/w500${epData.still_path}`);
-              } else if (isMounted) {
-                setImgSrc(fallbackCover || null);
-              }
-            });
-        } else {
-          setImgSrc(fallbackCover || null);
+        if (isMounted && data?.imageUrl) {
+          setImgSrc(data.imageUrl);
         }
       })
-      .catch(() => {
-        if (isMounted) setImgSrc(fallbackCover || null);
-      });
+      .catch(() => {});
 
     return () => {
       isMounted = false;
     };
-  }, [ep, seriesTitle, tmdbId, seasonKey, fallbackCover]);
-
-  const finalSrc = imgSrc || fallbackCover;
-
-  if (!finalSrc) {
-    return <div className="h-full w-full bg-ink-900 rounded-lg" />;
-  }
+  }, [ep, seriesTitle, tmdbId, seasonKey]);
 
   return (
     <SmartImage
-      src={finalSrc}
+      src={imgSrc || fallbackCover}
       alt={ep.title || "Episode"}
       rounded="rounded-lg"
       className="h-full w-full object-cover"
@@ -100,7 +62,7 @@ function EpisodeImage({
 }
 
 // Carte d'acteur 3D Flip
-function FlipActorCard({ name }: { name: string }) {
+const FlipActorCard = ({ name }: { name: string }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
   const [isFlipped, setIsFlipped] = useState(false);
@@ -165,36 +127,15 @@ function FlipActorCard({ name }: { name: string }) {
       </div>
     </div>
   );
-}
+};
 
-function SeriesSkeleton() {
-  return (
-    <div className="px-5 pt-40 sm:px-8">
-      <div className="flex gap-6">
-        <Skeleton className="hidden aspect-[2/3] w-44 sm:block" />
-        <div className="flex-1 space-y-4">
-          <Skeleton className="h-9 w-2/3" />
-          <Skeleton className="h-4 w-1/3" />
-          <Skeleton className="h-24 w-full max-w-2xl" />
-          <div className="flex gap-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-8 w-24 rounded-full" />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function SeriesDetailsView() {
+export default function SeriesDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data, isLoading, isError } = useSeriesInfo(id);
   const { isFav, toggleFav, progress } = useLibrary();
 
   const [seasonKey, setSeasonKey] = useState<string | null>(null);
   const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
-  const [seasonPoster, setSeasonPoster] = useState<string | null>(null);
 
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
@@ -215,61 +156,6 @@ export default function SeriesDetailsView() {
 
   const activeSeasonKey = seasonKey ?? seasons[0] ?? null;
   const episodes = activeSeasonKey !== null ? episodesBySeason[activeSeasonKey] ?? [] : [];
-
-  const title = (info?.name as string) || (info?.title as string) || "Série";
-
-  useEffect(() => {
-    if (!activeSeasonKey) return;
-
-    let isMounted = true;
-    const seasonNumber = activeSeasonKey.replace(/\D/g, "") || "1";
-
-    let cleanTitle = cleanName(title)
-      .replace(/\./g, " ")
-      .replace(/S\d+E\d+.*/i, "")
-      .replace(/(VOSTFR|FRENCH|MULTI|720p|1080p|2160p|WEB-DL|WEBRip|x264|x265|AMZN|NF|-FANATIK|-EXTREME).*/i, "")
-      .replace(/\(\d{4}\)/g, "")
-      .trim();
-
-    const fetchSeasonPoster = async () => {
-      try {
-        let realTmdbId = info?.tmdb_id;
-
-        if (!realTmdbId && cleanTitle) {
-          const searchRes = await fetch(
-            `/api/tmdb?path=search/tv&query=${encodeURIComponent(cleanTitle)}&language=fr-FR`
-          ).then((r) => r.json());
-
-          realTmdbId = searchRes?.results?.[0]?.id;
-        }
-
-        if (!realTmdbId) {
-          if (isMounted) setSeasonPoster(null);
-          return;
-        }
-
-        const seasonRes = await fetch(
-          `/api/tmdb?path=tv/${realTmdbId}/season/${seasonNumber}&language=fr-FR`
-        ).then((r) => r.json());
-
-        if (isMounted) {
-          if (seasonRes?.poster_path) {
-            setSeasonPoster(`https://image.tmdb.org/t/p/w500${seasonRes.poster_path}`);
-          } else {
-            setSeasonPoster(null);
-          }
-        }
-      } catch {
-        if (isMounted) setSeasonPoster(null);
-      }
-    };
-
-    fetchSeasonPoster();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [activeSeasonKey, title, info?.tmdb_id]);
 
   const handleFullscreenLandscape = async () => {
     const elem = playerContainerRef.current;
@@ -301,6 +187,7 @@ export default function SeriesDetailsView() {
   if (isLoading) return <SeriesSkeleton />;
   if (isError || !data) return <p className="px-8 py-24 text-center text-red-300">Impossible de charger la série.</p>;
 
+  const title = (info?.name as string) || (info?.title as string) || "Série";
   const rating = ratingNum(info?.rating);
   const year = yearFrom(info?.releaseDate || info?.releasedate, title);
   const fav = isFav("series", Number(id));
@@ -308,8 +195,6 @@ export default function SeriesDetailsView() {
   const castList = info?.cast
     ? info.cast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : [];
-
-  const currentPoster = seasonPoster || info?.cover;
 
   return (
     <div className="min-h-screen bg-ink-950 text-white p-3 sm:p-6 space-y-6">
@@ -322,7 +207,7 @@ export default function SeriesDetailsView() {
 
       <DetailHero
         backdrop={info?.backdrop_path?.[0] || info?.backdrop}
-        poster={currentPoster}
+        poster={info?.cover}
         title={title}
         fav={fav}
         onToggleFav={() => toggleFav("series", { id: Number(id), name: cleanName(title), poster: info?.cover })}
@@ -419,15 +304,18 @@ export default function SeriesDetailsView() {
                   <VideoPlayer
                     key={activeEpisode.id}
                     sources={[
-                      `/api/stream?type=series&id=${activeEpisode.id}&ext=mp4`,
-                      `/api/stream?type=series&id=${activeEpisode.id}&ext=ts`,
-                      `/api/stream?type=series&id=${activeEpisode.id}&ext=${
+                      // 1. Appel prioritaire du Transcodeur FFmpeg sur Railway (Son AAC garanti)
+                      `/api/transcode?type=series&id=${activeEpisode.id}&ext=${
                         activeEpisode.container_extension || "mkv"
+                      }`,
+                      // 2. Stream direct en fallback
+                      `/api/stream?type=series&id=${activeEpisode.id}&ext=${
+                        activeEpisode.container_extension || "mp4"
                       }`,
                     ]}
                     ext="mp4"
                     isLive={false}
-                    title={`${cleanName(title)} - S${activeEpisode.season || activeSeasonKey}E${activeEpisode.episode_num}`}
+                    title={`${title} - S${activeEpisode.season || activeSeasonKey}E${activeEpisode.episode_num}`}
                   />
                 </div>
               </div>
@@ -458,7 +346,7 @@ export default function SeriesDetailsView() {
                       seriesTitle={cleanName(title)}
                       tmdbId={info?.tmdb_id}
                       seasonKey={activeSeasonKey || "1"}
-                      fallbackCover={currentPoster || info?.backdrop}
+                      fallbackCover={info?.cover || info?.backdrop}
                     />
                     <span className="absolute inset-0 grid place-items-center bg-ink-950/30 opacity-0 transition-opacity group-hover:opacity-100">
                       <span className="grid h-8 w-8 place-items-center rounded-full bg-iris-400 text-ink-950">
@@ -495,6 +383,26 @@ export default function SeriesDetailsView() {
           </div>
         </div>
       </DetailHero>
+    </div>
+  );
+}
+
+function SeriesSkeleton() {
+  return (
+    <div className="px-5 pt-40 sm:px-8">
+      <div className="flex gap-6">
+        <Skeleton className="hidden aspect-[2/3] w-44 sm:block" />
+        <div className="flex-1 space-y-4">
+          <Skeleton className="h-9 w-2/3" />
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-24 w-full max-w-2xl" />
+          <div className="flex gap-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-8 w-24 rounded-full" />
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
