@@ -9,7 +9,16 @@ import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
 /**
- * Extraction robuste du vrai nom du film (évite "Film")
+ * Nettoie le titre du film en retirant les années entre parenthèses à la fin
+ * Exemple : "Les Animaux fantastiques (2022)" -> "Les Animaux fantastiques"
+ */
+function cleanMovieTitle(rawTitle: string): string {
+  if (!rawTitle) return "";
+  return rawTitle.replace(/\s*\(\d{4}\)\s*$/g, "").trim();
+}
+
+/**
+ * Extraction robuste du titre du film
  */
 function extractMovieTitle(movieInfo: any): string {
   if (!movieInfo) return "Film";
@@ -28,9 +37,9 @@ function extractMovieTitle(movieInfo: any): string {
 
   for (const name of candidates) {
     if (name && typeof name === "string") {
-      const clean = name.trim();
-      if (clean && clean.toLowerCase() !== "film" && clean.toLowerCase() !== "movie") {
-        return clean;
+      const cleaned = cleanMovieTitle(name);
+      if (cleaned && cleaned.toLowerCase() !== "film" && cleaned.toLowerCase() !== "movie") {
+        return cleaned;
       }
     }
   }
@@ -39,7 +48,7 @@ function extractMovieTitle(movieInfo: any): string {
 }
 
 /**
- * Extraction de la durée en secondes
+ * Extraction de la durée en secondes depuis l'API Xtream
  */
 function extractDurationInSeconds(data: any): number {
   if (!data) return 0;
@@ -200,7 +209,7 @@ export default function MovieDetailPage() {
   const movieYear = info.releasedate?.slice(0, 4) || info.year || "";
   const tmdbId = info.tmdb_id || vodData.tmdb_id;
 
-  // Récupération de la vraie bande-annonce TMDB uniquement si un titre valide existe
+  // Récupération de la vraie bande-annonce TMDB
   useEffect(() => {
     if (!movieTitle || movieTitle.toLowerCase() === "film") return;
 
@@ -266,11 +275,12 @@ export default function MovieDetailPage() {
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : Array.isArray(rawCast) ? rawCast : [];
 
+  // Flux direct prioritaire pour éviter les coupures de transcodage si disponible
   const movieSources = [
+    `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
     knownDurationSec > 0
       ? `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}&duration=${knownDurationSec}`
       : `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}`,
-    `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
   ];
 
   const finalTrailerKey = tmdbTrailerKey || info.youtube_trailer || vodData.youtube_trailer;
@@ -332,8 +342,9 @@ export default function MovieDetailPage() {
           )}
 
           <div className="space-y-2 sm:space-y-3 flex-1">
+            {/* Titre propre sans année dupliquée */}
             <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight text-white">
-              {movieTitle} {movieYear ? `(${movieYear})` : ""}
+              {movieTitle}
             </h1>
 
             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 font-medium">
