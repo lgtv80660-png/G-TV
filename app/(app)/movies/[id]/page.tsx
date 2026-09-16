@@ -7,41 +7,38 @@ import { Play, Star, Calendar, Clock, X, User, Info, Maximize, Video, ArrowLeft,
 import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { useLibrary } from "@/store/library";
 import { api } from "@/lib/api";
-import { ratingNum, yearFrom, cleanName, cn } from "@/lib/utils";
+import { ratingNum, yearFrom, cleanName } from "@/lib/utils";
 
-// 1. Extraction 100% autonome du titre
+// 1. Extraction 100% autonome et sécurisée du titre
 function getCleanTitle(data: any): string {
   if (!data) return "Film";
-  const info = data.info || {};
-  const vod = data.movie_data || {};
+  const info = data?.info || {};
+  const vod = data?.movie_data || {};
   
   const rawTitle = info.name || vod.name || info.title || vod.title || info.o_name || "Film";
   
-  // Retire les années à la fin du titre comme "(2022)" et les espaces en trop
   const cleaned = String(rawTitle).replace(/\s*\(\d{4}\)\s*$/g, "").trim();
-  return cleaned || "Film";
+  return cleaned ? cleanName(cleaned) : "Film";
 }
 
 // 2. Extraction ultra-robuste de la durée en secondes
 function getDurationInSeconds(data: any): number {
   if (!data) return 0;
-  const info = data.info || {};
-  const vod = data.movie_data || {};
+  const info = data?.info || {};
+  const vod = data?.movie_data || {};
 
-  // Vérifie d'abord si on a directement des secondes
-  const secKeys = ['duration_secs', 'length_secs', 'duration_seconds'];
+  const secKeys = ["duration_secs", "length_secs", "duration_seconds"];
   for (const key of secKeys) {
     if (info[key] && !isNaN(Number(info[key]))) return Number(info[key]);
     if (vod[key] && !isNaN(Number(vod[key]))) return Number(vod[key]);
   }
 
-  // Sinon, on convertit le format texte (ex: "02:22:00" ou "120 min")
   const strDur = info.duration || vod.duration || info.runtime || vod.runtime;
   if (strDur) {
-    const cleanStr = String(strDur).toLowerCase().replace(/min/g, '').trim();
+    const cleanStr = String(strDur).toLowerCase().replace(/min/g, "").trim();
     
-    if (cleanStr.includes(':')) {
-      const parts = cleanStr.split(':').map(Number);
+    if (cleanStr.includes(":")) {
+      const parts = cleanStr.split(":").map(Number);
       if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
       if (parts.length === 2) return parts[0] * 60 + parts[1];
     } else {
@@ -60,6 +57,8 @@ const FlipActorCard = ({ name }: { name: string }) => {
 
   useEffect(() => {
     let isMounted = true;
+    if (!name) return;
+
     fetch(`/api/actor-photo?name=${encodeURIComponent(name)}`)
       .then((res) => res.json())
       .then((data) => {
@@ -121,7 +120,9 @@ const FlipActorCard = ({ name }: { name: string }) => {
 };
 
 export default function MovieDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams();
+  const id = params?.id as string;
+
   const [movieInfo, setMovieInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeMedia, setActiveMedia] = useState<"movie" | "trailer" | null>(null);
@@ -177,7 +178,7 @@ export default function MovieDetailPage() {
     lastTapRef.current = now;
   };
 
-  if (loading) {
+  if (loading || !movieInfo) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-[#0b0c10]">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
@@ -193,9 +194,9 @@ export default function MovieDetailPage() {
   const movieTitle = getCleanTitle(movieInfo);
   const movieDurationSec = getDurationInSeconds(movieInfo);
 
-  const rating = ratingNum(info?.rating);
-  const year = yearFrom(info?.releasedate || info?.releasedate, movieTitle);
-  const isFavorite = isFav("movie", Number(streamId));
+  const rating = info?.rating ? ratingNum(info.rating) : 0;
+  const year = yearFrom(info?.releasedate || vodData?.releasedate, movieTitle);
+  const isFavorite = streamId ? isFav("movie", Number(streamId)) : false;
   const tmdbId = info?.tmdb_id || vodData?.tmdb_id;
 
   const rawCast = info?.cast || vodData?.cast || info?.actors || "";
@@ -203,19 +204,13 @@ export default function MovieDetailPage() {
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : Array.isArray(rawCast) ? rawCast : [];
 
-  // ==========================================
-  // LOGIQUE STRICTE POUR ÉVITER LE CRASH VERCEL
-  // ==========================================
   const isNativeSupported = ["mp4", "m3u8"].includes(containerExt);
 
   const movieSources = isNativeSupported
     ? [
-        // Flux natif uniquement pour mp4/m3u8
         `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`
       ]
     : [
-        // Transcodage FFmpeg uniquement pour MKV/AVI/TS
-        // PAS DE &duration DANS L'URL (cela cassait la vidéo à 11s)
         `/api/transcode?type=movie&id=${streamId}&ext=${containerExt || "mkv"}`
       ];
 
@@ -229,7 +224,7 @@ export default function MovieDetailPage() {
     const fetchTmdbTrailer = async () => {
       try {
         const res = await fetch(
-          `/api/tmdb-trailer?title=${encodeURIComponent(movieTitle)}&year=${year}&tmdbId=${tmdbId || ""}&lang=${currentLang}`
+          `/api/tmdb-trailer?title=${encodeURIComponent(movieTitle)}&year=${year || ""}&tmdbId=${tmdbId || ""}&lang=${currentLang}`
         );
         const data = await res.json();
         if (isMounted && data?.key) setTmdbTrailerKey(data.key);
