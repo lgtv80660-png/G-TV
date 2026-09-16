@@ -8,9 +8,6 @@ import { Play, ArrowLeft, Star, Heart, X, User, Film, Info, Maximize, Video } fr
 import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
-/**
- * Extraction de la durée complète en secondes pour la barre de défilement
- */
 function extractDurationInSeconds(data: any): number {
   if (!data) return 0;
   
@@ -42,9 +39,6 @@ function extractDurationInSeconds(data: any): number {
   return 0;
 }
 
-/**
- * Requête de recherche YouTube selon la langue active
- */
 function getTrailerSearchQuery(title: string, year: string, lang: string = "fr"): string {
   const cleanTitle = title.trim();
   const yearStr = year ? ` ${year}` : "";
@@ -60,7 +54,6 @@ function getTrailerSearchQuery(title: string, year: string, lang: string = "fr")
   }
 }
 
-// Carte d'acteur 3D Flip intégrée
 function FlipActorCard({ name }: { name: string }) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>("Chargement...");
@@ -101,7 +94,6 @@ function FlipActorCard({ name }: { name: string }) {
           isFlipped ? "rotate-y-180" : "group-hover:scale-105"
         }`}
       >
-        {/* Face Avant (Photo & Nom) */}
         <div className="absolute inset-0 w-full h-full rounded-xl overflow-hidden bg-[#181a24] border border-white/10 shadow-lg backface-hidden flex flex-col justify-end">
           {photoUrl ? (
             <img src={photoUrl} alt={name} className="absolute inset-0 w-full h-full object-cover" />
@@ -117,7 +109,6 @@ function FlipActorCard({ name }: { name: string }) {
           </div>
         </div>
 
-        {/* Face Arrière (Biographie) */}
         <div className="absolute inset-0 w-full h-full rounded-xl p-2 bg-gradient-to-br from-indigo-950 to-[#12141c] border border-indigo-500/40 text-white backface-hidden rotate-y-180 flex flex-col justify-between shadow-xl">
           <div className="space-y-0.5 overflow-hidden">
             <p className="text-[9px] font-bold text-indigo-300 line-clamp-1">{name}</p>
@@ -211,13 +202,11 @@ export default function MovieDetailPage() {
   
   const youtubeTrailerId = info.youtube_trailer || vodData.youtube_trailer;
 
-  // Extraction propre de la liste des acteurs
   const rawCast = info.cast || vodData.cast || info.actors || "";
   const castList = typeof rawCast === "string"
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
     : Array.isArray(rawCast) ? rawCast : [];
 
-  // URL du lecteur pour la bande-annonce dans le site
   const trailerEmbedUrl = youtubeTrailerId
     ? `https://www.youtube.com/embed/${youtubeTrailerId}?autoplay=1`
     : `https://www.youtube.com/embed?listType=search&list=${getTrailerSearchQuery(movieTitle, movieYear, currentLang)}&autoplay=1`;
@@ -294,9 +283,129 @@ export default function MovieDetailPage() {
               {info.genre && <span className="text-zinc-400">• {info.genre}</span>}
             </div>
 
-            {/* Boutons Play et Bande-Annonce */}
             {!isPlaying && (
               <div className="flex items-center gap-3 pt-2">
                 <button
                   onClick={() => setIsPlaying(true)}
-                  className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-
+                  className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:scale-105"
+                >
+                  <Play className="w-4 h-4 fill-current translate-x-0.5" />
+                  Play
+                </button>
+
+                <button
+                  onClick={() => setShowTrailer(true)}
+                  className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs px-4 py-2.5 rounded-xl border border-white/10 transition-all hover:scale-105"
+                >
+                  <Video className="w-4 h-4 text-red-500 fill-current" />
+                  Bande-annonce
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Modale d'intégration de la bande-annonce DIRECTEMENT sur la page */}
+      {showTrailer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+            <button
+              onClick={() => setShowTrailer(false)}
+              className="absolute top-3 right-3 z-10 p-2 rounded-full bg-black/60 text-white hover:bg-black transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <iframe
+              src={trailerEmbedUrl}
+              title="Bande-annonce"
+              className="w-full h-full border-0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
+        {isPlaying && (
+          <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-400 truncate max-w-[70%]">
+                {movieTitle}
+              </h2>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleFullscreenLandscape}
+                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
+                  title="Plein Écran Horizontal"
+                >
+                  <Maximize className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setIsPlaying(false)}
+                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
+                  title="Fermer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div
+              ref={playerContainerRef}
+              onClick={handleDoubleTap}
+              className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5 cursor-pointer"
+            >
+              <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
+                <VideoPlayer
+                  key={streamId}
+                  sources={[
+                    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}`,
+                    `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
+                  ]}
+                  ext="mp4"
+                  isLive={false}
+                  title={movieTitle}
+                  knownDuration={knownDurationSec}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Synopsis & Section Casting 3D */}
+        <div className={isPlaying ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
+          <div className="bg-[#12141c] border border-white/5 rounded-2xl p-4 sm:p-6 space-y-3">
+            <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Film className="w-4 h-4 text-indigo-400" /> Synopsis & Histoire
+            </h3>
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              {info.description || info.plot || "Aucun résumé disponible."}
+            </p>
+            {info.director && (
+              <div className="pt-2 border-t border-white/5 text-xs text-zinc-400">
+                <span className="text-zinc-500 font-semibold">Réalisateur : </span>
+                <span className="text-zinc-200">{info.director}</span>
+              </div>
+            )}
+          </div>
+
+          {castList.length > 0 && (
+            <div className="bg-[#12141c] border border-white/5 rounded-2xl p-4 sm:p-6 space-y-3">
+              <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <User className="w-4 h-4 text-indigo-400" /> Casting / Acteurs
+              </h3>
+              <div className="flex flex-wrap gap-2.5 pt-1">
+                {castList.slice(0, 10).map((actor: string, idx: number) => (
+                  <FlipActorCard key={idx} name={actor} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
