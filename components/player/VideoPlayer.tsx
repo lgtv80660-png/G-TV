@@ -11,7 +11,6 @@ import { formatTime, cn } from "@/lib/utils";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
-/** Convert SubRip (.srt) text to WebVTT so the browser can render it. */
 function srtToVtt(text: string): string {
   const body = text
     .replace(/\r+/g, "")
@@ -34,7 +33,6 @@ export function VideoPlayer({
   subtitles = [],
   knownDuration = 0,
 }: {
-  /** Ordered candidate URLs — first is tried, next used on failure (direct → proxy). */
   sources: string[];
   ext: string;
   isLive: boolean;
@@ -46,9 +44,7 @@ export function VideoPlayer({
   onBack?: () => void;
   onProgress?: (position: number, duration: number, poster?: string) => void;
   onEnded?: () => void;
-  /** Provider-supplied subtitle tracks (proxied .vtt URLs). */
   subtitles?: Array<{ label: string; src: string; lang?: string }>;
-  /** Real runtime (s) from metadata — used when a remuxed stream has no duration. */
   knownDuration?: number;
 }) {
   const extSubs = subtitles;
@@ -74,21 +70,20 @@ export function VideoPlayer({
   const [subName, setSubName] = useState<string | null>(null);
   const [capMenu, setCapMenu] = useState(false);
   const [trackList, setTrackList] = useState<Array<{ index: number; label: string }>>([]);
-  const [activeTrack, setActiveTrack] = useState<number>(-1); // -1 = off
+  const [activeTrack, setActiveTrack] = useState<number>(-1);
 
-  // pseudo-seek for remuxed streams: reload ffmpeg from an offset
   const [seekBase, setSeekBase] = useState(0);
   const [scrub, setScrub] = useState<number | null>(null);
 
   const rawSrc = sources[srcIdx] ?? sources[0];
   const isTranscode = !!rawSrc && rawSrc.includes("/api/transcode");
-  // appending &t= makes the attach effect reload ffmpeg from that timestamp
   const src = isTranscode && seekBase > 0 ? `${rawSrc}&t=${Math.floor(seekBase)}` : rawSrc;
-  const seekable = !isLive; // transcoded streams seek by reloading
-  const total = isTranscode && knownDuration > 0 ? knownDuration : duration;
+  const seekable = !isLive;
+  
+  // Priorité absolue à knownDuration pour le transcode
+  const total = knownDuration > 0 ? knownDuration : (Number.isFinite(duration) ? duration : 0);
   const displayCurrent = isTranscode ? seekBase + current : current;
 
-  // reset to the preferred source whenever the candidate list (title) changes
   useEffect(() => {
     setSrcIdx(0);
     setSeekBase(0);
@@ -109,7 +104,6 @@ export function VideoPlayer({
     [sources.length],
   );
 
-  // (re)attach engine when src changes
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
@@ -135,7 +129,7 @@ export function VideoPlayer({
         if (!isLastSource) {
           tryFallback("Stream was slow to start — switching to backup source.");
         } else {
-          setError("Couldn’t start this channel — it may be offline, geo-blocked, or not broadcasting right now. Try another.");
+          setError("Couldn’t start this channel — it may be offline or geo-blocked.");
         }
       },
       isLastSource ? 30000 : 12000,
@@ -149,7 +143,6 @@ export function VideoPlayer({
     };
   }, [src, ext, isLive, tryFallback, srcIdx, sources.length]);
 
-  // media element events
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -161,23 +154,24 @@ export function VideoPlayer({
       setError(null);
     };
     const onLoaded = () => {
-      setDuration(v.duration || 0);
-      if (!isLive && !isTranscode && startTime > 0 && startTime < (v.duration || Infinity)) {
+      const d = v.duration;
+      if (Number.isFinite(d)) {
+        setDuration(d);
+      }
+      if (!isLive && !isTranscode && startTime > 0 && startTime < (d || Infinity)) {
         v.currentTime = startTime;
       }
     };
     const onTime = () => {
       setCurrent(v.currentTime);
-      setDuration(v.duration || 0);
-      if (isTranscode) {
-        if (knownDuration > 0) onProgress?.(seekBase + v.currentTime, knownDuration, poster);
-      } else {
-        onProgress?.(v.currentTime, v.duration || 0, poster);
+      if (Number.isFinite(v.duration)) {
+        setDuration(v.duration);
       }
+      const pos = isTranscode ? seekBase + v.currentTime : v.currentTime;
+      onProgress?.(pos, total, poster);
     };
     const onEnd = () => onEnded?.();
-    const onErr = () =>
-      tryFallback("This title isn’t available from your provider right now, or can’t be played in the browser. Try another title.");
+    const onErr = () => tryFallback("Playback error.");
 
     v.addEventListener("play", onPlay);
     v.addEventListener("pause", onPause);
@@ -197,7 +191,7 @@ export function VideoPlayer({
       v.removeEventListener("ended", onEnd);
       v.removeEventListener("error", onErr);
     };
-  }, [ext, isLive, startTime, onProgress, onEnded, tryFallback, isTranscode, knownDuration, seekBase, poster]);
+  }, [ext, isLive, startTime, onProgress, onEnded, tryFallback, isTranscode, total, seekBase, poster]);
 
   useEffect(() => {
     const onFs = () => setFullscreen(!!document.fullscreenElement);
@@ -440,10 +434,10 @@ export function VideoPlayer({
             <input
               type="range"
               min={0}
-              max={total || 0}
+              max={total > 0 ? total : 100}
               step={1}
               value={scrub ?? displayCurrent}
-              disabled={!seekable || !total}
+              disabled={!seekable || total === 0}
               onInput={(e) => setScrub(Number((e.target as HTMLInputElement).value))}
               onChange={(e) => {
                 seek(Number(e.target.value));
@@ -452,11 +446,11 @@ export function VideoPlayer({
               className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-white/20 accent-iris-400 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-iris-400"
               style={{
                 background: `linear-gradient(to right, var(--color-iris-400) ${
-                  total ? ((scrub ?? displayCurrent) / total) * 100 : 0
+                  total > 0 ? Math.min(100, ((scrub ?? displayCurrent) / total) * 100) : 0
                 }%, rgba(255,255,255,0.2) 0%)`,
               }}
             />
-            <span className="w-12">{total ? formatTime(total) : "—:—"}</span>
+            <span className="w-12">{total > 0 ? formatTime(total) : "—:—"}</span>
           </div>
         )}
 
