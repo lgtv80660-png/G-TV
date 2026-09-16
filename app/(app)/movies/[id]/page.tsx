@@ -9,9 +9,7 @@ import Link from "next/link";
 import { useLibrary } from "@/store/library";
 
 /**
- * Extraction précise de la durée en secondes depuis les données Xtream.
- * Si aucune durée valide n'est trouvée, retourne 0 pour que le VideoPlayer
- * utilise la durée réelle détectée par le navigateur (onLoadedMetadata).
+ * Extraction précise de la durée en secondes depuis les données Xtream/TMDB.
  */
 function extractDurationInSeconds(data: any): number {
   if (!data) return 0;
@@ -19,7 +17,6 @@ function extractDurationInSeconds(data: any): number {
   const info = data.info || {};
   const vodData = data.movie_data || {};
 
-  // 1. Clés numériques directes
   const secsCandidates = [
     info.duration_secs,
     vodData.duration_secs,
@@ -33,7 +30,6 @@ function extractDurationInSeconds(data: any): number {
     if (!isNaN(num) && num > 0) return num;
   }
 
-  // 2. Clés sous forme de chaîne de caractères (ex: "01:54:30", "114 min", "114")
   const strCandidates = [
     info.duration,
     vodData.duration,
@@ -47,42 +43,19 @@ function extractDurationInSeconds(data: any): number {
     if (!raw) continue;
     const str = String(raw).trim().toLowerCase().replace("min", "").trim();
     
-    // Format "HH:MM:SS" ou "MM:SS"
     if (str.includes(":")) {
       const parts = str.split(":").map((p) => parseInt(p, 10) || 0);
-      if (parts.length === 3) {
-        return parts[0] * 3600 + parts[1] * 60 + parts[2];
-      }
-      if (parts.length === 2) {
-        return parts[0] * 60 + parts[1];
-      }
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
     }
 
-    // Nombre simple (minutes ou secondes)
     const num = parseInt(str, 10);
     if (!isNaN(num) && num > 0) {
-      // Si la valeur est inférieure à 300, ce sont des minutes (ex: 120 -> 7200s)
       return num < 300 ? num * 60 : num;
     }
   }
 
-  // Retourne 0 si aucune durée n'est fournie par l'API (évite de forcer 2h)
   return 0;
-}
-
-function getTrailerSearchQuery(title: string, year: string, lang: string = "fr"): string {
-  const cleanTitle = title.trim();
-  const yearStr = year ? ` ${year}` : "";
-
-  switch (lang.toLowerCase()) {
-    case "ar":
-      return encodeURIComponent(`${cleanTitle}${yearStr} اعلان مترجم`);
-    case "fr":
-      return encodeURIComponent(`${cleanTitle}${yearStr} bande annonce officielle vf`);
-    case "en":
-    default:
-      return encodeURIComponent(`${cleanTitle}${yearStr} official trailer`);
-  }
 }
 
 function FlipActorCard({ name }: { name: string }) {
@@ -160,6 +133,7 @@ export default function MovieDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeMedia, setActiveMedia] = useState<"movie" | "trailer" | null>(null);
   const [currentLang, setCurrentLang] = useState("fr");
+  const [tmdbTrailerKey, setTmdbTrailerKey] = useState<string | null>(null);
 
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const lastTapRef = useRef<number>(0);
@@ -182,6 +156,45 @@ export default function MovieDetailPage() {
       .catch((err) => console.error("Erreur chargement film:", err))
       .finally(() => setLoading(false));
   }, [id]);
+
+  const info = movieInfo?.info || movieInfo?.movie_data || {};
+  const vodData = movieInfo?.movie_data || {};
+  const streamId = vodData.stream_id || info.stream_id || id;
+  const containerExt = vodData.container_extension || info.container_extension || "mp4";
+
+  const knownDurationSec = extractDurationInSeconds(movieInfo);
+
+  const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
+  const isFavorite = isFav("movie", Number(streamId));
+  const movieTitle = info.name || info.title || "Film";
+  const movieYear = info.releasedate?.slice(0, 4) || info.year || "";
+  const tmdbId = info.tmdb_id || vodData.tmdb_id;
+
+  // Récupération automatique de la bande-annonce via l'API TMDB
+  useEffect(() => {
+    if (!movieTitle) return;
+
+    let isMounted = true;
+    const fetchTmdbTrailer = async () => {
+      try {
+        const res = await fetch(
+          `/api/tmdb-trailer?title=${encodeURIComponent(movieTitle)}&year=${movieYear}&tmdbId=${tmdbId || ""}&lang=${currentLang}`
+        );
+        const data = await res.json();
+        if (isMounted && data?.key) {
+          setTmdbTrailerKey(data.key);
+        }
+      } catch (err) {
+        console.error("Erreur récupération TMDB trailer:", err);
+      }
+    };
+
+    fetchTmdbTrailer();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [movieTitle, movieYear, tmdbId, currentLang]);
 
   const handleFullscreenLandscape = async () => {
     const elem = playerContainerRef.current;
@@ -218,21 +231,6 @@ export default function MovieDetailPage() {
     );
   }
 
-  const info = movieInfo?.info || movieInfo?.movie_data || {};
-  const vodData = movieInfo?.movie_data || {};
-  const streamId = vodData.stream_id || info.stream_id || id;
-  const containerExt = vodData.container_extension || info.container_extension || "mp4";
-
-  // Durée précise extraite depuis l'API Xtream
-  const knownDurationSec = extractDurationInSeconds(movieInfo);
-
-  const backdropUrl = info.backdrop_path?.[0] || info.backdrop || info.cover_big || info.movie_image;
-  const isFavorite = isFav("movie", Number(streamId));
-  const movieTitle = info.name || info.title || "Film";
-  const movieYear = info.releasedate?.slice(0, 4) || info.year || "";
-  
-  const youtubeTrailerId = info.youtube_trailer || vodData.youtube_trailer;
-
   const rawCast = info.cast || vodData.cast || info.actors || "";
   const castList = typeof rawCast === "string"
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
@@ -245,9 +243,11 @@ export default function MovieDetailPage() {
     `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
   ];
 
-  const youtubeEmbedUrl = youtubeTrailerId
-    ? `https://www.youtube-nocookie.com/embed/${youtubeTrailerId}?autoplay=1&rel=0`
-    : `https://www.youtube-nocookie.com/embed?listType=search&list=${getTrailerSearchQuery(movieTitle, movieYear, currentLang)}&autoplay=1`;
+  // Identifiant vidéo YouTube final (depuis TMDB ou Xtream)
+  const finalTrailerKey = tmdbTrailerKey || info.youtube_trailer || vodData.youtube_trailer;
+  const youtubeEmbedUrl = finalTrailerKey
+    ? `https://www.youtube-nocookie.com/embed/${finalTrailerKey}?autoplay=1&rel=0`
+    : `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(`${movieTitle} ${movieYear} trailer`)}&autoplay=1`;
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-zinc-100 p-3 sm:p-6 space-y-4 sm:space-y-6">
@@ -344,7 +344,7 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
-      {/* Main Grid : VideoPlayer pour le film, iframe YouTube pour le Trailer */}
+      {/* Main Grid : VideoPlayer pour le film, iframe YouTube (TMDB) pour le Trailer */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {activeMedia && (
           <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
