@@ -95,7 +95,6 @@ export default function MovieDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Fonction pour basculer en Plein Écran Horizontal sur mobile
   const handleFullscreenLandscape = async () => {
     const elem = playerContainerRef.current;
     if (!elem) return;
@@ -107,7 +106,6 @@ export default function MovieDetailPage() {
         await (elem as any).webkitRequestFullscreen();
       }
 
-      // Verrouille l'orientation à l'horizontale sur mobile si supporté par le navigateur
       if (window.screen?.orientation && "lock" in window.screen.orientation) {
         await (window.screen.orientation as any).lock("landscape").catch(() => {});
       }
@@ -116,10 +114,9 @@ export default function MovieDetailPage() {
     }
   };
 
-  // Gestion du double tap mobile (ou double-clic PC)
   const handleDoubleTap = () => {
     const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300; // 300ms entre deux taps
+    const DOUBLE_TAP_DELAY = 300;
     if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
       handleFullscreenLandscape();
     }
@@ -258,7 +255,6 @@ export default function MovieDetailPage() {
               </div>
             </div>
 
-            {/* Zone de double-tap / double-clic */}
             <div
               ref={playerContainerRef}
               onClick={handleDoubleTap}
@@ -267,8 +263,13 @@ export default function MovieDetailPage() {
               <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
                 <VideoPlayer
                   key={streamId}
-                  sources={[`/api/stream?type=movie&id=${streamId}&ext=${containerExt}`]}
-                  ext={containerExt}
+                  sources={[
+                    // 1. Transcodeur FFmpeg sur Railway en premier choix
+                    `/api/transcode?type=movie&id=${streamId}&ext=${containerExt}`,
+                    // 2. Stream direct en fallback
+                    `/api/stream?type=movie&id=${streamId}&ext=${containerExt}`,
+                  ]}
+                  ext="mp4"
                   isLive={false}
                   title={movieTitle}
                 />
