@@ -261,3 +261,134 @@ export default function MovieDetailPage() {
             <div className="absolute inset-0 bg-gradient-to-t from-[#0b0c10] via-transparent to-transparent" />
           </div>
         )}
+
+        <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 w-full">
+          {(info.movie_image || info.cover_big) && (
+            <img
+              src={info.movie_image || info.cover_big}
+              alt={movieTitle}
+              className="w-28 sm:w-36 aspect-[2/3] object-cover rounded-xl shadow-2xl border border-white/10 flex-shrink-0"
+            />
+          )}
+
+          <div className="space-y-2 sm:space-y-3 flex-1">
+            <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight text-white">
+              {movieTitle} {movieYear ? `(${movieYear})` : ""}
+            </h1>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400 font-medium">
+              {info.rating && (
+                <span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2 py-0.5 rounded-md flex items-center gap-1 font-semibold">
+                  <Star className="w-3 h-3 fill-current" /> {info.rating}
+                </span>
+              )}
+              {info.releasedate && (
+                <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded-md">
+                  {info.releasedate}
+                </span>
+              )}
+              {info.genre && <span className="text-zinc-400">• {info.genre}</span>}
+            </div>
+
+            {!activeMedia && (
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={() => setActiveMedia("movie")}
+                  className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:scale-105"
+                >
+                  <Play className="w-4 h-4 fill-current translate-x-0.5" />
+                  Play
+                </button>
+
+                <button
+                  onClick={() => setActiveMedia("trailer")}
+                  className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs px-4 py-2.5 rounded-xl border border-white/10 transition-all hover:scale-105"
+                >
+                  <Video className="w-4 h-4 text-red-500 fill-current" />
+                  Bande-annonce
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
+        {activeMedia && (
+          <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-indigo-400 truncate max-w-[70%]">
+                {activeMedia === "trailer" ? `Bande-annonce : ${movieTitle}` : movieTitle}
+              </h2>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleFullscreenLandscape}
+                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
+                  title="Plein Écran Horizontal"
+                >
+                  <Maximize className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setActiveMedia(null)}
+                  className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
+                  title="Fermer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div
+              ref={playerContainerRef}
+              onClick={handleDoubleTap}
+              className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/5 cursor-pointer"
+            >
+              <div className="absolute inset-0 flex items-center justify-center [&>div]:w-full [&>div]:h-full [&_video]:w-full [&_video]:h-full [&_video]:object-contain">
+                <VideoPlayer
+                  key={`${streamId}-${activeMedia}`}
+                  sources={activeMedia === "movie" ? movieSources : trailerSources}
+                  ext="mp4"
+                  isLive={false}
+                  title={activeMedia === "trailer" ? `Bande-annonce : ${movieTitle}` : movieTitle}
+                  knownDuration={activeMedia === "movie" ? knownDurationSec : 0}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Synopsis & Section Casting 3D */}
+        <div className={activeMedia ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
+          <div className="bg-[#12141c] border border-white/5 rounded-2xl p-4 sm:p-6 space-y-3">
+            <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Film className="w-4 h-4 text-indigo-400" /> Synopsis & Histoire
+            </h3>
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              {info.description || info.plot || "Aucun résumé disponible."}
+            </p>
+            {info.director && (
+              <div className="pt-2 border-t border-white/5 text-xs text-zinc-400">
+                <span className="text-zinc-500 font-semibold">Réalisateur : </span>
+                <span className="text-zinc-200">{info.director}</span>
+              </div>
+            )}
+          </div>
+
+          {castList.length > 0 && (
+            <div className="bg-[#12141c] border border-white/5 rounded-2xl p-4 sm:p-6 space-y-3">
+              <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <User className="w-4 h-4 text-indigo-400" /> Casting / Acteurs
+              </h3>
+              <div className="flex flex-wrap gap-2.5 pt-1">
+                {castList.slice(0, 10).map((actor: string, idx: number) => (
+                  <FlipActorCard key={idx} name={actor} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
