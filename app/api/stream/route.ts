@@ -1,6 +1,6 @@
+// Dans app/api/stream/route.ts
 import { requireSession } from "@/lib/session";
 import { buildStreamUrl } from "@/lib/xtream/urls";
-import { locatePlayable } from "@/lib/xtream/locate";
 import type { StreamKind } from "@/lib/xtream/types";
 
 export const runtime = "nodejs";
@@ -20,54 +20,60 @@ export async function GET(req: Request) {
   const id = searchParams.get("id");
   let ext = searchParams.get("ext") || "mp4";
 
-  if (!type || !id || !["movie", "series", "live"].includes(type)) {
-    return new Response("Bad stream request", { status: 400 });
-  }
+  if (!type || !id) return new Response("Bad request", { status: 400 });
 
   const creds = await requireSession();
-  let upstreamUrl = buildStreamUrl(creds, type, id, ext);
-
-  // Pour le live, on tente d'obtenir la bonne URL HLS
-  if (type === "live") {
-    upstreamUrl = buildStreamUrl(creds, "live", id, "m3u8");
-  } else {
-    try {
-      const located = await locatePlayable(creds, type, id, ext);
-      if (located?.url) upstreamUrl = located.url;
-    } catch {}
-  }
-
-  const headers = new Headers();
-  headers.set("User-Agent", UA);
-  headers.set("Accept", "*/*");
-
-  const range = req.headers.get("range");
-  if (range) headers.set("Range", range);
+  
+  // Pour le Live, on force la demande m3u8
+  if (type === "live") ext = "m3u8";
+  
+  const targetUrl = buildStreamUrl(creds, type, id, ext);
 
   try {
-    const upstreamRes = await fetch(upstreamUrl, {
-      method: "GET",
-      headers,
+    const upstreamRes = await fetch(targetUrl, {
+      headers: { "User-Agent": UA, Accept: "*/*" },
       redirect: "follow",
     });
 
-    if (!upstreamRes.ok && upstreamRes.status !== 206) {
-      return new Response(`Upstream error: ${upstreamRes.statusText}`, {
-        status: upstreamRes.status,
+    if (!upstreamRes.ok) {
+      return new Response(`Upstream error ${upstreamRes.status}`, { status: upstreamRes.status });
+    }
+
+    // SI C'EST DU LIVE (M3U8) : On réécrit le texte du fichier de playlist
+    if (type === "live" || ext === "m3u8") {
+      const playlistText = await upstreamRes.text();
+      const baseUrl = new URL(targetUrl);
+      const baseOrigin = `${baseUrl.protocol}//${baseUrl.host}`;
+      const basePath = baseUrl.pathname.substring(0, baseUrl.pathname.lastIndexOf("/") + 1);
+
+      // Transformer les lignes de segments relatives (.ts) en URLs absolues vers le serveur IPTV
+      const rewrittenPlaylist = playlistText.replace(/^(?!#)(.+)$/gm, (line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return line;
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+        if (trimmed.startsWith("/")) return `${baseOrigin}${trimmed}`;
+        return `${baseOrigin}${basePath}${trimmed}`;
+      });
+
+      return new Response(rewrittenPlaylist, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/vnd.apple.mpegurl",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Access-Control-Allow-Origin": "*",
+        },
       });
     }
 
+    // SI C'EST DE LA VOD (MP4) : Transmission binaire standard
     const responseHeaders = new Headers();
     const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
-
     passthrough.forEach((h) => {
-      const val = upstreamRes.headers.get(h);
-      if (val) responseHeaders.set(h, val);
+      const v = upstreamRes.headers.get(h);
+      if (v) responseHeaders.set(h, v);
     });
 
-    responseHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
     responseHeaders.set("Access-Control-Allow-Origin", "*");
-    responseHeaders.set("X-Accel-Buffering", "no");
 
     const { readable, writable } = new TransformStream();
     upstreamRes.body?.pipeTo(writable).catch(() => {});
@@ -77,6 +83,6 @@ export async function GET(req: Request) {
       headers: responseHeaders,
     });
   } catch (err: any) {
-    return new Response(`Stream proxy failed: ${err.message}`, { status: 502 });
+    return new Response(`Proxy Error: ${err.message}`, { status: 502 });
   }
 }
