@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { streamSrc, resolveSrc, api } from "@/lib/api";
+import { resolveSrc, api } from "@/lib/api";
 import { useSeriesInfo } from "@/lib/hooks";
 import { useLibrary } from "@/store/library";
 import { parseDurationToSeconds } from "@/lib/utils";
@@ -51,14 +51,21 @@ function WatchInner() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Détermination de l'extension avec repli automatique MP4 si MKV
   const ext = useMemo(() => {
-    if (extParam) return extParam;
-    if (resolved?.ext) return resolved.ext;
-    if (type === "movie") {
-      const container = (movieInfo?.movie_data as any)?.container_extension;
-      if (container) return container;
+    let rawExt = extParam || resolved?.ext;
+    if (!rawExt && type === "movie") {
+      rawExt = (movieInfo?.movie_data as any)?.container_extension;
     }
-    return isLive ? "ts" : "mp4";
+
+    if (isLive) return rawExt || "ts";
+
+    // Reconversion systématique des conteneurs MKV vers MP4 pour le serveur Xtream
+    if (!rawExt || rawExt.toLowerCase() === "mkv") {
+      return "mp4";
+    }
+
+    return rawExt;
   }, [extParam, resolved, type, movieInfo, isLive]);
 
   const poster = useMemo(() => {
@@ -87,10 +94,10 @@ function WatchInner() {
 
   const mediaKind = type as StreamKind;
 
-  // ROUTAGE STRICK : Pas de /api/hls pour les films et séries
+  // ROUTAGE UNIFIÉ SUR /api/stream : Fin des erreurs 404/502
   const sources = useMemo(() => {
     if (isLive) {
-      return [`/api/stream/live?id=${id}&ext=${ext}`];
+      return [`/api/stream?type=live&id=${id}&ext=${ext}`];
     }
     return [`/api/stream?type=${mediaKind}&id=${id}&ext=${encodeURIComponent(ext)}`];
   }, [isLive, mediaKind, id, ext]);
@@ -131,7 +138,7 @@ function WatchInner() {
     if (!nextEp || !seriesId) return;
     const t = `${title.split(" · ")[0]} · ${nextEp.title || `Episode ${nextEp.episode_num}`}`;
     router.replace(
-      `/watch?type=series&id=${nextEp.id}&ext=${nextEp.container_extension || "mp4"}&title=${encodeURIComponent(t)}&series=${seriesId}`,
+      `/watch?type=series&id=${nextEp.id}&ext=mp4&title=${encodeURIComponent(t)}&series=${seriesId}`,
     );
   }, [nextEp, seriesId, title, router]);
 
