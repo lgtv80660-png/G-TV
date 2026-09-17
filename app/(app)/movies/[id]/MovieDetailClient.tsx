@@ -118,11 +118,13 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
   const [activeMedia, setActiveMedia] = useState<"movie" | "trailer" | null>(null);
   const [currentLang, setCurrentLang] = useState("fr");
   const [tmdbTrailerKey, setTmdbTrailerKey] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const { isFav, toggleFav } = useLibrary();
 
   useEffect(() => {
+    setMounted(true);
     if (useLibrary?.persist?.rehydrate) {
       useLibrary.persist.rehydrate();
     }
@@ -201,7 +203,7 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
 
   const rating = info?.rating ? ratingNum(info.rating) : 0;
   const year = yearFrom(info?.releasedate || vodData?.releasedate, movieTitle);
-  const isFavorite = streamId ? isFav("movie", Number(streamId)) : false;
+  const isFavorite = mounted && streamId ? isFav("movie", Number(streamId)) : false;
   const tmdbId = info?.tmdb_id || vodData?.tmdb_id;
 
   const rawCast = info?.cast || vodData?.cast || info?.actors || "";
@@ -247,6 +249,7 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
         .rotate-y-180 { transform: rotateY(180deg); }
       `}</style>
 
+      {/* Top Bar */}
       <div className="flex items-center justify-between">
         <Link
           href="/movies"
@@ -271,6 +274,7 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
         </button>
       </div>
 
+      {/* Hero Banner */}
       <div className={`relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[200px] sm:min-h-[240px] flex items-end p-4 sm:p-6 ${activeMedia ? "hidden sm:flex" : "flex"}`}>
         {backdropUrl && (
           <div className="absolute inset-0 z-0">
@@ -336,6 +340,7 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
         </div>
       </div>
 
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {activeMedia && (
           <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
