@@ -24,9 +24,14 @@ export async function GET(req: Request) {
     return new Response("Bad stream request", { status: 400 });
   }
 
-  // Remplacement de l'extension MKV par MP4 pour que le serveur IPTV ré-encoche l'audio en AAC
+  // Force la reconversion MKV -> MP4 pour l'audio AAC
   if (type !== "live" && ext.toLowerCase() === "mkv") {
     ext = "mp4";
+  }
+
+  // Force le mode HLS m3u8 pour le Live
+  if (type === "live" && ext === "ts") {
+    ext = "m3u8";
   }
 
   const creds = await requireSession();
@@ -39,7 +44,6 @@ export async function GET(req: Request) {
     } catch {}
   }
 
-  // Transmissions des en-têtes Range pour le Seeking
   const headers = new Headers();
   headers.set("User-Agent", UA);
   headers.set("Accept", "*/*");
@@ -69,14 +73,17 @@ export async function GET(req: Request) {
     });
 
     if (!responseHeaders.has("content-type")) {
-      responseHeaders.set("content-type", type === "live" ? "video/mp2t" : "video/mp4");
+      if (type === "live" || ext === "m3u8") {
+        responseHeaders.set("content-type", "application/vnd.apple.mpegurl");
+      } else {
+        responseHeaders.set("content-type", "video/mp4");
+      }
     }
 
     responseHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
     responseHeaders.set("Access-Control-Allow-Origin", "*");
     responseHeaders.set("X-Accel-Buffering", "no");
 
-    // Conduit binaire universel Vercel
     const { readable, writable } = new TransformStream();
     upstreamRes.body?.pipeTo(writable).catch(() => {});
 
@@ -85,7 +92,7 @@ export async function GET(req: Request) {
       headers: responseHeaders,
     });
   } catch (err: any) {
-    console.error("[VERCEL STREAM PROXY ERROR]:", err.message);
+    console.error("[VERCEL PROXY ERROR]:", err.message);
     return new Response(`Stream proxy failed: ${err.message}`, { status: 502 });
   }
 }
