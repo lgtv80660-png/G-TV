@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     return new Response("Bad stream request", { status: 400 });
   }
 
-  // 1. CODE D'ORIGINE INTACT POUR MOVIES ET SERIES
+  // 1. Localisation exacte pour Films/Séries (Code d'origine rétabli)
   let upstreamUrl = buildStreamUrl(creds, type, id, ext);
   if (type !== "live") {
     const located = await locatePlayable(creds, type, id, ext);
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     }
   }
 
-  // 2. PROXY DE FLUX (Conserve le proxy strict pour éviter d'exposer le fournisseur)
+  // 2. Proxy qui masque le fournisseur Xtream
   return new Promise<Response>((resolve) => {
     const parsedUrl = new URL(upstreamUrl);
     const isHttps = parsedUrl.protocol === "https:";
@@ -86,19 +86,13 @@ export async function GET(req: Request) {
       const nodeStream = new ReadableStream({
         start(controller) {
           upstreamRes.on("data", (chunk) => {
-            try {
-              controller.enqueue(chunk);
-            } catch {}
+            try { controller.enqueue(chunk); } catch {}
           });
           upstreamRes.on("end", () => {
-            try {
-              controller.close();
-            } catch {}
+            try { controller.close(); } catch {}
           });
           upstreamRes.on("error", () => {
-            try {
-              controller.close();
-            } catch {}
+            try { controller.close(); } catch {}
           });
         },
         cancel() {
