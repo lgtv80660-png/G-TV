@@ -40,9 +40,7 @@ export function VideoPlayer({ sources, ext = "mp4", isLive = false, poster }: Vi
           return;
         }
 
-        video.play().catch(() => {
-          // Playback auto-blocked handling if needed
-        });
+        video.play().catch(() => {});
       } catch (err) {
         if (isMounted) setError(true);
       }
@@ -59,18 +57,20 @@ export function VideoPlayer({ sources, ext = "mp4", isLive = false, poster }: Vi
     };
 
     video.addEventListener("canplay", handleCanPlay);
+    video.addEventListener("playing", handleCanPlay);
     video.addEventListener("error", handleError);
 
     return () => {
       isMounted = false;
       video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("playing", handleCanPlay);
       video.removeEventListener("error", handleError);
       if (handle) handle.destroy();
     };
   }, [sources, ext, isLive]);
 
   return (
-    <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden">
+    <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden rounded-xl">
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
           <Loader2 className="w-8 h-8 text-iris-400 animate-spin" />
@@ -80,7 +80,7 @@ export function VideoPlayer({ sources, ext = "mp4", isLive = false, poster }: Vi
       {error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-10 text-white p-4 text-center">
           <p className="text-sm font-semibold text-rose-500">Erreur de lecture du flux</p>
-          <p className="text-xs text-fog-400 mt-1">Le canal est temporairement indisponible ou le format est incompatible.</p>
+          <p className="text-xs text-fog-400 mt-1">Le flux est indisponible ou a été interrompu.</p>
         </div>
       )}
 
@@ -90,7 +90,7 @@ export function VideoPlayer({ sources, ext = "mp4", isLive = false, poster }: Vi
         controls
         autoPlay
         playsInline
-        className="w-full h-full object-contain bg-black"
+        className="w-full h-full object-contain bg-black block"
       />
     </div>
   );
