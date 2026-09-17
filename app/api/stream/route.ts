@@ -24,12 +24,11 @@ export async function GET(req: Request) {
     return new Response("Bad stream request", { status: 400 });
   }
 
-  // Force la reconversion MKV -> MP4 pour l'audio AAC
+  // Force la demande MP4 pour le démultiplexage audio natif
   if (type !== "live" && ext.toLowerCase() === "mkv") {
     ext = "mp4";
   }
 
-  // Force le mode HLS m3u8 pour le Live
   if (type === "live" && ext === "ts") {
     ext = "m3u8";
   }
@@ -92,7 +91,6 @@ export async function GET(req: Request) {
       headers: responseHeaders,
     });
   } catch (err: any) {
-    console.error("[VERCEL PROXY ERROR]:", err.message);
     return new Response(`Stream proxy failed: ${err.message}`, { status: 502 });
   }
 }
