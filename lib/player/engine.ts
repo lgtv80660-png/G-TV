@@ -24,6 +24,7 @@ export async function attach(
   opts: { url: string; ext: string; isLive: boolean },
 ): Promise<EngineHandle> {
   const kind = pickEngine(opts.url, opts.ext, opts.isLive);
+  const cleanExt = opts.ext.toLowerCase().replace(/^\./, "");
 
   // 1. HLS (.m3u8)
   if (kind === "hls") {
@@ -80,8 +81,16 @@ export async function attach(
     }
   }
 
-  // 3. NATIVE (Films & Séries MP4 / MKV)
-  video.src = opts.url;
+  // 3. NATIVE & ROUTAGE AUTOMATIQUE MKV VERS TRANSCODE
+  let targetUrl = opts.url;
+
+  // Redirige /api/stream vers /api/transcode pour les fichiers MKV
+  if (cleanExt === "mkv" && !opts.isLive && targetUrl.includes("/api/stream")) {
+    targetUrl = targetUrl.replace("/api/stream", "/api/transcode");
+  }
+
+  video.src = targetUrl;
+  
   return {
     kind: "native",
     destroy: () => {
