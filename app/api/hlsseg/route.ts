@@ -8,7 +8,6 @@ export const dynamic = "force-dynamic";
 
 const UA = "VLC/3.0.20 LibVLC/3.0.20";
 
-// Agents HTTP/HTTPS avec gestion de timeout et contournement des erreurs TLS
 const httpAgent = new http.Agent({ keepAlive: true, timeout: 15000 });
 const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 15000 });
 
@@ -23,13 +22,13 @@ export async function GET(req: Request) {
   const target = token ? getUrl(token) : null;
   if (!target) return new Response("Bad segment request", { status: 400 });
 
-  return fetchSegmentWithRedirects(target, req);
+  return fetchSegmentWithServerRedirects(target, req);
 }
 
-function fetchSegmentWithRedirects(targetUrl: string, req: Request, maxRedirects = 5): Promise<Response> {
+function fetchSegmentWithServerRedirects(targetUrl: string, req: Request, maxRedirects = 5): Promise<Response> {
   return new Promise((resolve) => {
     if (maxRedirects <= 0) {
-      return resolve(new Response("Too many redirects from upstream", { status: 502 }));
+      return resolve(new Response("Too many redirects from IPTV provider", { status: 502 }));
     }
 
     const parsed = new URL(targetUrl);
@@ -55,26 +54,14 @@ function fetchSegmentWithRedirects(targetUrl: string, req: Request, maxRedirects
     };
 
     const proxyReq = client.request(options, (upstreamRes) => {
-      // Suivi automatique des redirections 301, 302, 307
+      // Interception interne des 301/302/307 côté serveur
       if (
         upstreamRes.statusCode &&
         [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
         upstreamRes.headers.location
       ) {
         const nextUrl = new URL(upstreamRes.headers.location, targetUrl).toString();
-        return resolve(fetchSegmentWithRedirects(nextUrl, req, maxRedirects - 1));
-      }
-
-      if (
-        upstreamRes.statusCode &&
-        upstreamRes.statusCode !== 200 &&
-        upstreamRes.statusCode !== 206
-      ) {
-        return resolve(
-          new Response(`Segment upstream returned ${upstreamRes.statusCode}`, {
-            status: upstreamRes.statusCode,
-          })
-        );
+        return resolve(fetchSegmentWithServerRedirects(nextUrl, req, maxRedirects - 1));
       }
 
       const respHeaders = new Headers();
@@ -93,7 +80,6 @@ function fetchSegmentWithRedirects(targetUrl: string, req: Request, maxRedirects
       respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
       respHeaders.set("X-Accel-Buffering", "no");
 
-      // Transposition du flux Node.js en ReadableStream natif
       const nodeStream = new ReadableStream({
         start(controller) {
           upstreamRes.on("data", (chunk) => {
@@ -119,15 +105,15 @@ function fetchSegmentWithRedirects(targetUrl: string, req: Request, maxRedirects
 
       resolve(
         new Response(nodeStream, {
-          status: upstreamRes.statusCode || 200,
+          status: 200, // Forcer le statut 200 OK pour hls.js
           headers: respHeaders,
         })
       );
     });
 
     proxyReq.on("error", (err) => {
-      console.error("[HLSSEG PROXY ERROR]:", err.message);
-      resolve(new Response(`Segment fetch failed: ${err.message}`, { status: 502 }));
+      console.error("[HLSSEG ERROR]:", err.message);
+      resolve(new Response(`Segment proxy failed: ${err.message}`, { status: 502 }));
     });
 
     if (req.signal) {
