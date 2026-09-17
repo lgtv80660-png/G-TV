@@ -7,6 +7,7 @@ export default async function MovieDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // Capture sécurisée des params Next.js 15+
   let movieId = "";
   try {
     const resolvedParams = await params;
@@ -18,7 +19,7 @@ export default async function MovieDetailPage({
   if (!movieId) {
     return (
       <div className="flex flex-col justify-center items-center min-h-screen bg-[#0b0c10] text-white">
-        <p className="text-red-400 font-semibold">Identifiant du film introuvable.</p>
+        <p className="text-red-400 font-semibold">ID de film manquant dans l'URL.</p>
       </div>
     );
   }
