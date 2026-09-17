@@ -1,6 +1,5 @@
 import { requireSession } from "@/lib/session";
 import { buildStreamUrl } from "@/lib/xtream/urls";
-import { locatePlayable } from "@/lib/xtream/locate";
 import type { StreamKind } from "@/lib/xtream/types";
 import http from "http";
 import https from "https";
@@ -22,30 +21,25 @@ export async function GET(req: Request) {
   const id = searchParams.get("id");
   let ext = searchParams.get("ext") || "mp4";
 
-  if (!type || !id || !["movie", "series", "live"].includes(type)) {
-    return new Response("Bad stream request", { status: 400 });
-  }
-
-  // En Live, on remet le format original TS binaire pour mpegts.js
-  if (type === "live") {
-    ext = "ts";
-  } else if (ext.toLowerCase() === "mkv") {
-    ext = "mp4";
-  }
+  if (!type || !id) return new Response("Bad request", { status: 400 });
 
   const creds = await requireSession();
-  let upstreamUrl = buildStreamUrl(creds, type, id, ext);
+  if (type === "live") ext = "ts";
+  else if (ext.toLowerCase() === "mkv") ext = "mp4";
 
-  if (type !== "live") {
-    try {
-      const located = await locatePlayable(creds, type, id, ext);
-      if (located?.url) upstreamUrl = located.url;
-    } catch {}
-  }
+  const targetUrl = buildStreamUrl(creds, type, id, ext);
 
-  return new Promise<Response>((resolve) => {
+  return fetchWithRedirects(targetUrl, req);
+}
+
+function fetchWithRedirects(targetUrl: string, req: Request, redirects = 5): Promise<Response> {
+  return new Promise((resolve) => {
+    if (redirects <= 0) {
+      return resolve(new Response("Too many redirects or dead upstream domain", { status: 502 }));
+    }
+
     try {
-      const parsed = new URL(upstreamUrl);
+      const parsed = new URL(targetUrl);
       const isHttps = parsed.protocol === "https:";
       const client = isHttps ? https : http;
 
@@ -67,18 +61,17 @@ export async function GET(req: Request) {
       };
 
       const proxyReq = client.request(options, (upstreamRes) => {
-        // Redirection automatique si le fournisseur change de serveur
+        // Redirection 301/302 vers le serveur média réel du fournisseur
         if (
           upstreamRes.statusCode &&
           [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
           upstreamRes.headers.location
         ) {
-          const nextUrl = new URL(upstreamRes.headers.location, upstreamUrl).toString();
-          return resolve(fetch(nextUrl, { headers: { "User-Agent": UA } }));
+          const nextUrl = new URL(upstreamRes.headers.location, targetUrl).toString();
+          return resolve(fetchWithRedirects(nextUrl, req, redirects - 1));
         }
 
         const respHeaders = new Headers();
-        
         const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
         passthrough.forEach((h) => {
           if (upstreamRes.headers[h]) {
@@ -87,14 +80,8 @@ export async function GET(req: Request) {
           }
         });
 
-        if (!respHeaders.has("content-type")) {
-          respHeaders.set("content-type", type === "live" ? "video/mp2t" : "video/mp4");
-        }
-
-        // Headers CORS & anti-buffering stricts
         respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
         respHeaders.set("Access-Control-Allow-Origin", "*");
-        respHeaders.set("Access-Control-Allow-Methods", "GET, OPTIONS");
         respHeaders.set("X-Accel-Buffering", "no");
 
         const stream = new ReadableStream({
@@ -123,23 +110,14 @@ export async function GET(req: Request) {
       });
 
       proxyReq.on("error", (err) => {
-        resolve(new Response(`Proxy Stream Error: ${err.message}`, { status: 502 }));
+        // Capture l'erreur DNS ERR_NAME_NOT_RESOLVED sans crasher l'app
+        console.error("[STREAM DNS ERROR]:", err.message);
+        resolve(new Response(`Stream domain unreachable (${err.message})`, { status: 502 }));
       });
 
       proxyReq.end();
-    } catch (err: any) {
-      resolve(new Response(`Fatal Error: ${err.message}`, { status: 500 }));
+    } catch {
+      resolve(new Response("Internal Proxy Error", { status: 500 }));
     }
-  });
-}
-
-export async function OPTIONS() {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "*",
-    },
   });
 }
