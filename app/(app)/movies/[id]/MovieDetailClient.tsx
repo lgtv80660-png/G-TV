@@ -112,6 +112,7 @@ const FlipActorCard = ({ name }: { name: string }) => {
 };
 
 export function MovieDetailClient({ movieId }: { movieId: string }) {
+  // --- 1. TOUS LES STATES ET HOOKS SONT DÉCLARÉS STRICTEMENT AU DÉBUT ---
   const [movieInfo, setMovieInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -149,6 +150,40 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
       .finally(() => setLoading(false));
   }, [movieId]);
 
+  // Extraction sécurisée des données sans conditionner les hooks
+  const info = movieInfo?.info || movieInfo?.movie_data || {};
+  const vodData = movieInfo?.movie_data || {};
+  const streamId = vodData?.stream_id || info?.stream_id || movieId;
+  const containerExt = String(vodData?.container_extension || info?.container_extension || "mp4").toLowerCase();
+
+  const movieTitle = movieInfo ? getCleanTitle(movieInfo) : "";
+  const movieDurationSec = movieInfo ? getDurationInSeconds(movieInfo) : 0;
+
+  const rating = info?.rating ? ratingNum(info.rating) : 0;
+  const year = yearFrom(info?.releasedate || vodData?.releasedate, movieTitle);
+  const isFavorite = Boolean(streamId && isFav && typeof isFav === "function" ? isFav("movie", Number(streamId)) : false);
+  const tmdbId = info?.tmdb_id || vodData?.tmdb_id;
+
+  // --- 2. EFFECT TMDB PLACÉ AVANT TOUT RETURN CONDITIONNEL ---
+  useEffect(() => {
+    if (!movieTitle || movieTitle.toLowerCase() === "film") return;
+
+    let isMounted = true;
+    const fetchTmdbTrailer = async () => {
+      try {
+        const res = await fetch(
+          `/api/tmdb-trailer?title=${encodeURIComponent(movieTitle)}&year=${year || ""}&tmdbId=${tmdbId || ""}&lang=${currentLang}`
+        );
+        const data = await res.json();
+        if (isMounted && data?.key) setTmdbTrailerKey(data.key);
+      } catch (err) {
+        console.error("Erreur TMDB trailer:", err);
+      }
+    };
+    fetchTmdbTrailer();
+    return () => { isMounted = false; };
+  }, [movieTitle, year, tmdbId, currentLang]);
+
   const handleFullscreen = async () => {
     const elem = playerContainerRef.current;
     if (!elem) return;
@@ -166,6 +201,7 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
     }
   };
 
+  // --- 3. SEULEMENT MAINTENANT ON PEUT FAIRE DES RETURNS CONDITIONNELS ---
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-[#0b0c10]">
@@ -185,22 +221,6 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
     );
   }
 
-  const info = movieInfo?.info || movieInfo?.movie_data || {};
-  const vodData = movieInfo?.movie_data || {};
-  const streamId = vodData?.stream_id || info?.stream_id || movieId;
-  const containerExt = String(vodData?.container_extension || info?.container_extension || "mp4").toLowerCase();
-
-  const movieTitle = getCleanTitle(movieInfo);
-  const movieDurationSec = getDurationInSeconds(movieInfo);
-
-  const rating = info?.rating ? ratingNum(info.rating) : 0;
-  const year = yearFrom(info?.releasedate || vodData?.releasedate, movieTitle);
-  
-  // Correction de la vérification de favoris
-  const isFavorite = Boolean(streamId && isFav && typeof isFav === "function" ? isFav("movie", Number(streamId)) : false);
-  
-  const tmdbId = info?.tmdb_id || vodData?.tmdb_id;
-
   const rawCast = info?.cast || vodData?.cast || info?.actors || "";
   const castList = typeof rawCast === "string"
     ? rawCast.split(",").map((actor: string) => actor.trim()).filter(Boolean)
@@ -210,25 +230,6 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
   const posterUrl = info?.movie_image || info?.cover_big || info?.cover;
 
   const watchIframeUrl = `/watch?type=movie&id=${streamId}&ext=${containerExt}&title=${encodeURIComponent(movieTitle)}${posterUrl ? `&poster=${encodeURIComponent(posterUrl)}` : ""}`;
-
-  useEffect(() => {
-    if (!movieTitle || movieTitle.toLowerCase() === "film") return;
-
-    let isMounted = true;
-    const fetchTmdbTrailer = async () => {
-      try {
-        const res = await fetch(
-          `/api/tmdb-trailer?title=${encodeURIComponent(movieTitle)}&year=${year || ""}&tmdbId=${tmdbId || ""}&lang=${currentLang}`
-        );
-        const data = await res.json();
-        if (isMounted && data?.key) setTmdbTrailerKey(data.key);
-      } catch (err) {
-        console.error("Erreur TMDB trailer:", err);
-      }
-    };
-    fetchTmdbTrailer();
-    return () => { isMounted = false; };
-  }, [movieTitle, year, tmdbId, currentLang]);
 
   const finalTrailerKey = tmdbTrailerKey || info?.youtube_trailer || vodData?.youtube_trailer;
   const youtubeEmbedUrl = finalTrailerKey
