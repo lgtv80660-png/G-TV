@@ -7,22 +7,6 @@ export default async function MovieDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  // Capture sécurisée des params Next.js 15+
-  let movieId = "";
-  try {
-    const resolvedParams = await params;
-    movieId = resolvedParams?.id || "";
-  } catch (err) {
-    console.error("Erreur résolution params:", err);
-  }
-
-  if (!movieId) {
-    return (
-      <div className="flex flex-col justify-center items-center min-h-screen bg-[#0b0c10] text-white">
-        <p className="text-red-400 font-semibold">ID de film manquant dans l'URL.</p>
-      </div>
-    );
-  }
-
-  return <MovieDetailClient movieId={movieId} />;
+  const { id } = await params;
+  return <MovieDetailClient movieId={id} />;
 }
