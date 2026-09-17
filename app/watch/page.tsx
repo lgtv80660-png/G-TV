@@ -79,7 +79,8 @@ function WatchInner() {
 
   const sources = useMemo(() => {
     const proxy = streamSrc(mediaKind, id, ext);
-    if (isLive) return [`/api/hls?id=${id}`, proxy];
+    // ✅ CORRECTION : Pour le Live, on place /api/stream en premier pour utiliser mpegts.js direct
+    if (isLive) return [proxy, `/api/hls?id=${id}`];
     const transcode = transcodeSrc(mediaKind, id, ext);
     return [...(resolved?.directOk && resolved.url ? [resolved.url] : []), proxy, transcode];
   }, [isLive, mediaKind, id, ext, resolved]);
