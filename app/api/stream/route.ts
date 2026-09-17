@@ -1,6 +1,5 @@
 import { requireSession } from "@/lib/session";
 import { buildStreamUrl } from "@/lib/xtream/urls";
-import { locatePlayable } from "@/lib/xtream/locate";
 import type { StreamKind } from "@/lib/xtream/types";
 import http from "http";
 import https from "https";
@@ -10,13 +9,12 @@ export const dynamic = "force-dynamic";
 
 const UA = "VLC/3.0.20 LibVLC/3.0.20";
 
-const httpAgent = new http.Agent({ keepAlive: true, timeout: 15000 });
-const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 15000 });
+const httpAgent = new http.Agent({ keepAlive: true, timeout: 10000 });
+const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 10000 });
 
 export async function GET(req: Request) {
-  let creds;
   try {
-    creds = await requireSession();
+    await requireSession();
   } catch {
     return new Response("Not authenticated", { status: 401 });
   }
@@ -30,61 +28,56 @@ export async function GET(req: Request) {
     return new Response("Bad stream request", { status: 400 });
   }
 
-  let upstreamUrl = buildStreamUrl(creds, type, id, ext);
+  const creds = await requireSession();
+  const upstreamUrl = buildStreamUrl(creds, type, id, ext);
 
-  // REDIRECTION DIRECTE CLIENT POUR LA LIVE TV (Gratuit & Sans blocage Railway)
-  if (type === "live") {
-    return Response.redirect(upstreamUrl, 302);
-  }
+  return fetchAndStream(upstreamUrl, req);
+}
 
-  // PROXY NODE.JS POUR LES FILMS ET SÉRIES (Support Seeking/Range)
-  const located = await locatePlayable(creds, type, id, ext);
-  if (located) {
-    upstreamUrl = located.url;
-  }
+function fetchAndStream(targetUrl: string, req: Request, redirects = 5): Promise<Response> {
+  return new Promise((resolve) => {
+    if (redirects <= 0) {
+      return resolve(new Response("Too many redirects", { status: 502 }));
+    }
 
-  return new Promise<Response>((resolve) => {
-    const parsedUrl = new URL(upstreamUrl);
-    const isHttps = parsedUrl.protocol === "https:";
+    const parsed = new URL(targetUrl);
+    const isHttps = parsed.protocol === "https:";
     const client = isHttps ? https : http;
 
     const requestHeaders: Record<string, string> = {
       "User-Agent": UA,
       Accept: "*/*",
-      Connection: "keep-alive",
+      Connection: "close",
     };
 
     const range = req.headers.get("range");
-    if (range) {
-      requestHeaders["Range"] = range;
-    }
+    if (range) requestHeaders["Range"] = range;
 
     const options = {
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port || (isHttps ? 443 : 80),
-      path: parsedUrl.pathname + parsedUrl.search,
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 80),
+      path: parsed.pathname + parsed.search,
       method: "GET",
       headers: requestHeaders,
       agent: isHttps ? httpsAgent : httpAgent,
     };
 
     const proxyReq = client.request(options, (upstreamRes) => {
+      // Suivi de la redirection HTTP -> HTTP/HTTPS transparente côté serveur
+      if (
+        upstreamRes.statusCode &&
+        [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
+        upstreamRes.headers.location
+      ) {
+        const nextUrl = new URL(upstreamRes.headers.location, targetUrl).toString();
+        return resolve(fetchAndStream(nextUrl, req, redirects - 1));
+      }
+
       const respHeaders = new Headers();
-
-      const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
-      for (const h of passthrough) {
-        if (upstreamRes.headers[h]) {
-          const val = upstreamRes.headers[h];
-          respHeaders.set(h, Array.isArray(val) ? val.join(", ") : val);
-        }
-      }
-
-      if (!respHeaders.has("content-type")) {
-        respHeaders.set("content-type", "video/mp4");
-      }
-
+      respHeaders.set("Content-Type", targetUrl.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t");
       respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
       respHeaders.set("X-Accel-Buffering", "no");
+      respHeaders.set("Access-Control-Allow-Origin", "*");
 
       const nodeStream = new ReadableStream({
         start(controller) {
@@ -98,9 +91,9 @@ export async function GET(req: Request) {
               controller.close();
             } catch {}
           });
-          upstreamRes.on("error", (err) => {
+          upstreamRes.on("error", () => {
             try {
-              controller.error(err);
+              controller.close();
             } catch {}
           });
         },
@@ -111,15 +104,15 @@ export async function GET(req: Request) {
 
       resolve(
         new Response(nodeStream, {
-          status: upstreamRes.statusCode || 200,
+          status: 200,
           headers: respHeaders,
         })
       );
     });
 
     proxyReq.on("error", (err) => {
-      console.error(`[STREAM PROXY ERROR] ${type}/${id}:`, err.message);
-      resolve(new Response(`Stream proxy failed: ${err.message}`, { status: 502 }));
+      console.error("[STREAM ERROR]:", err.message);
+      resolve(new Response(`Stream fetch failed: ${err.message}`, { status: 502 }));
     });
 
     if (req.signal) {
