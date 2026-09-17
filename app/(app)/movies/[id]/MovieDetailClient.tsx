@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Play, Star, Clock, X, User, Info, Maximize, Video, ArrowLeft, Heart, Film } from "lucide-react";
+import { Play, Star, Clock, X, User, Info, Maximize, Video, ArrowLeft, Heart, Film, Volume2 } from "lucide-react";
 import { useLibrary } from "@/store/library";
 import { api } from "@/lib/api";
 import { ratingNum, yearFrom, cleanName } from "@/lib/utils";
@@ -206,7 +206,27 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
   const backdropUrl = info?.backdrop_path?.[0] || info?.backdrop || info?.cover_big || info?.movie_image;
   const posterUrl = info?.movie_image || info?.cover_big || info?.cover;
 
+  // URL de la page /watch avec passage complet des métadonnées
   const watchIframeUrl = `/watch?type=movie&id=${streamId}&ext=${containerExt}&title=${encodeURIComponent(movieTitle)}${posterUrl ? `&poster=${encodeURIComponent(posterUrl)}` : ""}`;
+
+  useEffect(() => {
+    if (!movieTitle || movieTitle.toLowerCase() === "film") return;
+
+    let isMounted = true;
+    const fetchTmdbTrailer = async () => {
+      try {
+        const res = await fetch(
+          `/api/tmdb-trailer?title=${encodeURIComponent(movieTitle)}&year=${year || ""}&tmdbId=${tmdbId || ""}&lang=${currentLang}`
+        );
+        const data = await res.json();
+        if (isMounted && data?.key) setTmdbTrailerKey(data.key);
+      } catch (err) {
+        console.error("Erreur TMDB trailer:", err);
+      }
+    };
+    fetchTmdbTrailer();
+    return () => { isMounted = false; };
+  }, [movieTitle, year, tmdbId, currentLang]);
 
   const finalTrailerKey = tmdbTrailerKey || info?.youtube_trailer || vodData?.youtube_trailer;
   const youtubeEmbedUrl = finalTrailerKey
@@ -347,7 +367,7 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
                 <iframe
                   src={watchIframeUrl}
                   className="w-full h-full border-0"
-                  allow="autoplay; fullscreen; picture-in-picture"
+                  allow="autoplay; fullscreen; picture-in-picture; encrypted-media; volume"
                   allowFullScreen
                 />
               ) : (
