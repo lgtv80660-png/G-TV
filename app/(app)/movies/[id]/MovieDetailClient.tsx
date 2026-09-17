@@ -122,6 +122,13 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const { isFav, toggleFav } = useLibrary();
 
+  // Réhydratation propre de Zustand côté client
+  useEffect(() => {
+    if (useLibrary?.persist?.rehydrate) {
+      useLibrary.persist.rehydrate();
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedLang = localStorage.getItem("app_lang") || localStorage.getItem("language") || "fr";
@@ -241,7 +248,6 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
         .rotate-y-180 { transform: rotateY(180deg); }
       `}</style>
 
-      {/* Top Bar */}
       <div className="flex items-center justify-between">
         <Link
           href="/movies"
@@ -266,7 +272,6 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
         </button>
       </div>
 
-      {/* Hero Banner */}
       <div className={`relative rounded-2xl overflow-hidden bg-[#12141c] border border-white/5 min-h-[200px] sm:min-h-[240px] flex items-end p-4 sm:p-6 ${activeMedia ? "hidden sm:flex" : "flex"}`}>
         {backdropUrl && (
           <div className="absolute inset-0 z-0">
@@ -332,7 +337,6 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
         </div>
       </div>
 
-      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {activeMedia && (
           <div className="lg:col-span-5 space-y-2 bg-[#12141c] border border-white/10 rounded-2xl p-2.5 sm:p-4 sticky top-2 sm:top-6 shadow-2xl z-30">
@@ -382,7 +386,6 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
           </div>
         )}
 
-        {/* Synopsis & Section Casting 3D */}
         <div className={activeMedia ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
           <div className="bg-[#12141c] border border-white/5 rounded-2xl p-4 sm:p-6 space-y-3">
             <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
