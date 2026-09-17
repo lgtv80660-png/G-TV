@@ -44,7 +44,6 @@ function WatchInner() {
     staleTime: 30 * 60 * 1000,
   });
 
-  // Résolution de l'extension réelle pour Movies/Series sans utiliser directement l'URL distante
   const { data: resolved, isLoading: resolving } = useQuery({
     queryKey: ["resolve", type, id, extParam],
     queryFn: () => resolveSrc(type as StreamKind, id, extParam || "mp4"),
@@ -88,11 +87,12 @@ function WatchInner() {
 
   const mediaKind = type as StreamKind;
 
-  // TOUJOURS PASSER PAR /api/stream EN UTILISANT L'EXTENSION DÉTECTÉE
+  // ROUTAGE STRICK : Pas de /api/hls pour les films et séries
   const sources = useMemo(() => {
-    const proxy = streamSrc(mediaKind, id, ext);
-    if (isLive) return [proxy, `/api/hls?id=${id}`];
-    return [proxy];
+    if (isLive) {
+      return [`/api/stream/live?id=${id}&ext=${ext}`];
+    }
+    return [`/api/stream?type=${mediaKind}&id=${id}&ext=${encodeURIComponent(ext)}`];
   }, [isLive, mediaKind, id, ext]);
 
   const recentedRef = useRef(false);
