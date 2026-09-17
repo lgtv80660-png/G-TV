@@ -32,7 +32,6 @@ export async function GET(req: Request) {
 
   let upstreamUrl = buildStreamUrl(creds, type, id, ext);
 
-  // Résolution sécurisée sans crash
   try {
     const located = await locatePlayable(creds, type, id, ext);
     if (located?.url) {
@@ -93,7 +92,6 @@ function fetchAndStream(targetUrl: string, req: Request, ext: string, redirects 
           }
         }
 
-        // Content-type adapté au MKV / MP4
         if (!respHeaders.has("content-type")) {
           respHeaders.set("content-type", ext === "mkv" ? "video/x-matroska" : "video/mp4");
         }
