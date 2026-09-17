@@ -5,16 +5,17 @@ export interface EngineHandle {
   destroy: () => void;
 }
 
-const NATIVE_OK = ["mp4", "m4v", "mov", "webm", "ogg"];
-const RISKY = ["mkv", "avi", "wmv", "flv", "ts"];
-
 export function pickEngine(url: string, ext: string, isLive: boolean): EngineKind {
   const u = url.toLowerCase();
-  if (u.includes("/api/hls") || /\.m3u8(\?|$)/.test(u)) return "hls";
+
+  if (u.includes("/api/hls") || /\.m3u8(\?|$)/.test(u)) {
+    return "hls";
+  }
+
   const e = ext.toLowerCase().replace(/^\./, "");
   if (e === "m3u8") return "hls";
   if (isLive || e === "ts") return "mpegts";
-  if (NATIVE_OK.includes(e) || RISKY.includes(e)) return "native";
+
   return "native";
 }
 
@@ -79,7 +80,7 @@ export async function attach(
     }
   }
 
-  // 3. NATIVE (Films & Séries MP4/MKV)
+  // 3. NATIVE (Films & Séries MP4 / MKV)
   video.src = opts.url;
   return {
     kind: "native",
