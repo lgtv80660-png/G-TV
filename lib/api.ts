@@ -76,13 +76,13 @@ export const api = {
 };
 
 /**
- * URL du proxy pour Vercel :
- * - Live : m3u8 pour découper en segments HLS courts (contourne le timeout Serverless Vercel)
- * - VOD : Force 'mp4' sur les conteneurs MKV pour convertir l'audio AC-3/EAC-3 en AAC compatible web
+ * Routing du contenu :
+ * - Live : Redirige vers /api/hls pour générer la playlist M3U8 avec réécriture des segments vers /api/hlsseg
+ * - VOD : Force l'extension 'mp4' sur les conteneurs MKV pour garantir la compatibilité audio web via /api/stream
  */
 export function streamSrc(kind: StreamKind, id: string | number, ext?: string): string {
   if (kind === "live") {
-    return `/api/stream?type=live&id=${id}&ext=m3u8`;
+    return `/api/hls?id=${id}`;
   }
 
   const vodExt = !ext || ext.toLowerCase() === "mkv" ? "mp4" : ext;
