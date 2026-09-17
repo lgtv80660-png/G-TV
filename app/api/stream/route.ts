@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/session";
 import { buildStreamUrl } from "@/lib/xtream/urls";
+import { locatePlayable } from "@/lib/xtream/locate";
 import type { StreamKind } from "@/lib/xtream/types";
 import http from "http";
 import https from "https";
@@ -13,8 +14,9 @@ const httpAgent = new http.Agent({ keepAlive: true, timeout: 15000 });
 const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 15000 });
 
 export async function GET(req: Request) {
+  let creds;
   try {
-    await requireSession();
+    creds = await requireSession();
   } catch {
     return new Response("Not authenticated", { status: 401 });
   }
@@ -22,19 +24,26 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") as StreamKind | null;
   const id = searchParams.get("id");
-  const ext = searchParams.get("ext") || "ts";
+  const ext = searchParams.get("ext") || (type === "live" ? "ts" : "mp4");
 
   if (!type || !id || !["live", "movie", "series"].includes(type)) {
     return new Response("Bad stream request", { status: 400 });
   }
 
-  const creds = await requireSession();
-  const upstreamUrl = buildStreamUrl(creds, type, id, ext);
+  let upstreamUrl = buildStreamUrl(creds, type, id, ext);
 
-  return fetchAndStream(upstreamUrl, req);
+  // Pour les films et séries : résolution du vrai lien de lecture (support MP4/MKV)
+  if (type !== "live") {
+    const located = await locatePlayable(creds, type, id, ext);
+    if (located?.url) {
+      upstreamUrl = located.url;
+    }
+  }
+
+  return fetchAndStream(upstreamUrl, req, type);
 }
 
-function fetchAndStream(targetUrl: string, req: Request, redirects = 5): Promise<Response> {
+function fetchAndStream(targetUrl: string, req: Request, type: StreamKind, redirects = 5): Promise<Response> {
   return new Promise((resolve) => {
     if (redirects <= 0) {
       return resolve(new Response("Too many redirects", { status: 502 }));
@@ -50,6 +59,7 @@ function fetchAndStream(targetUrl: string, req: Request, redirects = 5): Promise
       Connection: "keep-alive",
     };
 
+    // Transmission des Range headers indispensables pour le Seek dans les Films/Séries
     const range = req.headers.get("range");
     if (range) requestHeaders["Range"] = range;
 
@@ -63,38 +73,45 @@ function fetchAndStream(targetUrl: string, req: Request, redirects = 5): Promise
     };
 
     const proxyReq = client.request(options, (upstreamRes) => {
+      // Suivi automatique des redirections 301/302/307
       if (
         upstreamRes.statusCode &&
         [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
         upstreamRes.headers.location
       ) {
         const nextUrl = new URL(upstreamRes.headers.location, targetUrl).toString();
-        return resolve(fetchAndStream(nextUrl, req, redirects - 1));
+        return resolve(fetchAndStream(nextUrl, req, type, redirects - 1));
       }
 
       const respHeaders = new Headers();
-      respHeaders.set("Content-Type", targetUrl.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t");
+
+      // Transmission des en-têtes nécessaires à la lecture MP4/MKV et au Seeking
+      const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
+      for (const h of passthrough) {
+        if (upstreamRes.headers[h]) {
+          const val = upstreamRes.headers[h];
+          respHeaders.set(h, Array.isArray(val) ? val.join(", ") : val);
+        }
+      }
+
+      if (!respHeaders.has("content-type")) {
+        respHeaders.set("content-type", type === "live" ? "video/mp2t" : "video/mp4");
+      }
+
       respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
       respHeaders.set("X-Accel-Buffering", "no");
-      respHeaders.set("Connection", "keep-alive");
       respHeaders.set("Access-Control-Allow-Origin", "*");
 
       const nodeStream = new ReadableStream({
         start(controller) {
           upstreamRes.on("data", (chunk) => {
-            try {
-              controller.enqueue(chunk);
-            } catch {}
+            try { controller.enqueue(chunk); } catch {}
           });
           upstreamRes.on("end", () => {
-            try {
-              controller.close();
-            } catch {}
+            try { controller.close(); } catch {}
           });
           upstreamRes.on("error", () => {
-            try {
-              controller.close();
-            } catch {}
+            try { controller.close(); } catch {}
           });
         },
         cancel() {
@@ -104,22 +121,16 @@ function fetchAndStream(targetUrl: string, req: Request, redirects = 5): Promise
 
       resolve(
         new Response(nodeStream, {
-          status: 200,
+          status: upstreamRes.statusCode || 200,
           headers: respHeaders,
         })
       );
     });
 
     proxyReq.on("error", (err) => {
-      console.error("[STREAM ERROR]:", err.message);
-      resolve(new Response(`Stream fetch failed: ${err.message}`, { status: 502 }));
+      console.error(`[STREAM PROXY ERROR] ${type}:`, err.message);
+      resolve(new Response(`Stream proxy failed: ${err.message}`, { status: 502 }));
     });
-
-    if (req.signal) {
-      req.signal.addEventListener("abort", () => {
-        proxyReq.destroy();
-      });
-    }
 
     proxyReq.end();
   });
