@@ -42,15 +42,15 @@ export async function GET(req: Request) {
   if (range) headers["Range"] = range;
 
   try {
+    // 1. On effectue la requête sans duplex option pour éviter le blocage de socket Node.js sur Railway
     const upstream = await fetch(upstreamUrl, {
       headers,
       redirect: "follow",
-      // @ts-expect-error - undici option pour le streaming continu
-      duplex: "half",
       signal: req.signal,
     });
 
     if (!upstream.ok && upstream.status !== 206) {
+      console.error(`[STREAM FAIL] ${type}/${id} - Status: ${upstream.status}`);
       return new Response(`Upstream returned ${upstream.status}`, { status: upstream.status });
     }
 
@@ -65,56 +65,18 @@ export async function GET(req: Request) {
       respHeaders.set("content-type", type === "live" ? "video/mp2t" : "video/mp4");
     }
 
-    // --- EN-TÊTES SPÉCIFIQUES STREAMING EN DIRECT POUR RAILWAY ---
     respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
-    respHeaders.set("Pragma", "no-cache");
-    respHeaders.set("Expires", "0");
-    respHeaders.set("X-Accel-Buffering", "no"); // Interdit au proxy Railway de mettre en mémoire tampon
-    respHeaders.set("Connection", "keep-alive");
+    respHeaders.set("X-Accel-Buffering", "no");
 
-    // Pour le Live (MPEG-TS infini), on transmet les chunks en temps réel
-    if (type === "live" && upstream.body) {
-      const upstreamReader = upstream.body.getReader();
-      const nodeStream = new ReadableStream({
-        async start(controller) {
-          try {
-            while (true) {
-              const { done, value } = await upstreamReader.read();
-              if (done) {
-                controller.close();
-                break;
-              }
-              controller.enqueue(value);
-            }
-          } catch (err: any) {
-            // Fermeture propre en cas d'interruption par le lecteur ou fermeture d'onglet
-            try {
-              controller.close();
-            } catch {}
-          } finally {
-            upstreamReader.releaseLock();
-          }
-        },
-        cancel() {
-          upstreamReader.cancel().catch(() => {});
-        },
-      });
-
-      return new Response(nodeStream, {
-        status: upstream.status,
-        headers: respHeaders,
-      });
-    }
-
-    // Pour les films et séries (VOD), retour direct avec support du Seeking (Range)
     return new Response(upstream.body, {
       status: upstream.status,
       headers: respHeaders,
     });
   } catch (err: any) {
+    console.error(`[STREAM ERROR] ${type}/${id}:`, err?.message || err);
     if (err.name === "AbortError") {
       return new Response(null, { status: 499 });
     }
-    return new Response("Stream connection failed", { status: 502 });
+    return new Response(`Stream connection failed: ${err?.message || "Unknown"}`, { status: 502 });
   }
 }
