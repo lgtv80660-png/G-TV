@@ -30,16 +30,20 @@ export async function GET(req: Request) {
     return new Response("Bad stream request", { status: 400 });
   }
 
-  // 1. Localisation exacte pour Films/Séries (Code d'origine rétabli)
   let upstreamUrl = buildStreamUrl(creds, type, id, ext);
+
+  // Résolution d'URL pour VOD (Movies & Series)
   if (type !== "live") {
-    const located = await locatePlayable(creds, type, id, ext);
-    if (located) {
-      upstreamUrl = located.url;
+    try {
+      const located = await locatePlayable(creds, type, id, ext);
+      if (located?.url) {
+        upstreamUrl = located.url;
+      }
+    } catch (e) {
+      console.warn("[LOCATE ERROR]: fallback to buildStreamUrl");
     }
   }
 
-  // 2. Proxy qui masque le fournisseur Xtream
   return new Promise<Response>((resolve) => {
     const parsedUrl = new URL(upstreamUrl);
     const isHttps = parsedUrl.protocol === "https:";
@@ -66,8 +70,17 @@ export async function GET(req: Request) {
     };
 
     const proxyReq = client.request(options, (upstreamRes) => {
-      const respHeaders = new Headers();
+      // Gestion des redirections 301/302/307 du serveur IPTV
+      if (
+        upstreamRes.statusCode &&
+        [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
+        upstreamRes.headers.location
+      ) {
+        const nextUrl = new URL(upstreamRes.headers.location, upstreamUrl).toString();
+        return resolve(fetch(nextUrl, { headers: { "User-Agent": UA } }));
+      }
 
+      const respHeaders = new Headers();
       const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
       for (const h of passthrough) {
         if (upstreamRes.headers[h]) {
