@@ -9,11 +9,9 @@ export function pickEngine(url: string, ext: string, isLive: boolean): EngineKin
   const u = url.toLowerCase();
   const e = ext.toLowerCase().replace(/^\./, "");
 
-  // HLS déclenché pour .m3u8 ou pour les flux Live Vercel
-  if (u.includes("m3u8") || e === "m3u8" || isLive) {
+  if (u.includes(".m3u8") || e === "m3u8" || isLive) {
     return "hls";
   }
-
   if (e === "ts") return "mpegts";
 
   return "native";
@@ -25,15 +23,17 @@ export async function attach(
 ): Promise<EngineHandle> {
   const kind = pickEngine(opts.url, opts.ext, opts.isLive);
 
-  // 1. LECTURE HLS (Incompatible avec les freezes Serverless Vercel)
+  // 1. LECTURE HLS (Anti-freeze Live sur Vercel & Sync Audio)
   if (kind === "hls") {
     const Hls = (await import("hls.js")).default;
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 30,
-        maxBufferLength: 30,
+        lowLatencyMode: false,
+        backBufferLength: 60,
+        maxBufferLength: 60,
+        maxMaxBufferLength: 120,
+        enableAudioTrackSwitch: true,
       });
 
       hls.on(Hls.Events.ERROR, (_e, data) => {
@@ -46,16 +46,6 @@ export async function attach(
       hls.loadSource(opts.url);
       hls.attachMedia(video);
       return { kind: "hls", destroy: () => hls.destroy() };
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      // Support Safari/iOS
-      video.src = opts.url;
-      return {
-        kind: "hls",
-        destroy: () => {
-          video.removeAttribute("src");
-          video.load();
-        },
-      };
     }
   }
 
@@ -66,8 +56,8 @@ export async function attach(
       const player = mpegts.createPlayer(
         { type: "mpegts", isLive: opts.isLive, url: opts.url },
         {
-          enableStashBuffer: false,
-          stashInitialSize: 128,
+          enableStashBuffer: true,
+          stashInitialSize: 384, // Permet de recevoir le premier frame audio complet
           lazyLoad: false,
           liveBufferLatencyChasing: true,
           autoCleanupSourceBuffer: true,
@@ -90,7 +80,7 @@ export async function attach(
     }
   }
 
-  // 3. NATIVE (Pour le MP4)
+  // 3. NATIVE
   video.src = opts.url;
   return {
     kind: "native",
