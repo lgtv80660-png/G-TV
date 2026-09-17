@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 
 const UA = "VLC/3.0.20 LibVLC/3.0.20";
 
-// Utilisation d'agents Node.js natifs qui autorisent les flux HTTP/1.1 continus
 const httpAgent = new http.Agent({ keepAlive: true, timeout: 15000 });
 const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 15000 });
 
@@ -82,7 +81,6 @@ export async function GET(req: Request) {
       respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
       respHeaders.set("X-Accel-Buffering", "no");
 
-      // Conversion du flux Node.js IncomingMessage en ReadableStream natif pour Web Response
       const nodeStream = new ReadableStream({
         start(controller) {
           upstreamRes.on("data", (chunk) => {
@@ -119,7 +117,6 @@ export async function GET(req: Request) {
       resolve(new Response(`Stream proxy failed: ${err.message}`, { status: 502 }));
     });
 
-    // Gestion de l'annulation client (changement de chaîne ou fermeture de page)
     if (req.signal) {
       req.signal.addEventListener("abort", () => {
         proxyReq.destroy();
