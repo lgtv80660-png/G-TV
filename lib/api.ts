@@ -75,29 +75,38 @@ export const api = {
     getJson<{ epg_listings: EpgListing[] }>(`/api/epg?stream_id=${streamId}&limit=${limit}`),
 };
 
-/** Same-origin proxied media URL (used for live, and as a VOD fallback). */
-export function streamSrc(kind: StreamKind, id: string | number, ext = "ts"): string {
-  return `/api/stream?type=${kind}&id=${id}&ext=${encodeURIComponent(ext)}`;
+/** Construction stricte de l'URL du proxy interne pour tous les médias. */
+export function streamSrc(kind: StreamKind, id: string | number, ext?: string): string {
+  const defaultExt = kind === "live" ? "ts" : "mp4";
+  const e = ext || defaultExt;
+  return `/api/stream?type=${kind}&id=${id}&ext=${encodeURIComponent(e)}`;
 }
 
-/** ffmpeg remux URL — fallback for browser-unplayable containers (mkv/avi/…). */
+/** Fallback de transcodage ffmpeg. */
 export function transcodeSrc(kind: StreamKind, id: string | number, ext: string): string {
   return `/api/transcode?type=${kind}&id=${id}&ext=${encodeURIComponent(ext)}`;
 }
 
-/** Resolve the direct provider URL + whether direct browser playback is viable. */
+/** 
+ * Résolution des données de conteneur.
+ * Désactivation du directOk pour empêcher le navigateur de contourner le proxy Railway.
+ */
 export async function resolveSrc(
   kind: StreamKind,
   id: string | number,
   ext: string,
-): Promise<{ url: string | null; directOk: boolean }> {
+): Promise<{ url: string | null; directOk: boolean; ext?: string }> {
   try {
     const res = await fetch(`/api/resolve?type=${kind}&id=${id}&ext=${encodeURIComponent(ext)}`, {
       credentials: "same-origin",
     });
     if (!res.ok) return { url: null, directOk: false };
-    const { url, directOk } = await res.json();
-    return { url: url ?? null, directOk: !!directOk };
+    const data = await res.json();
+    return { 
+      url: null, // Force l'utilisation du proxy /api/stream
+      directOk: false, // Empêche l'exposition de l'URL brute du serveur IPTV
+      ext: data?.ext || ext 
+    };
   } catch {
     return { url: null, directOk: false };
   }
