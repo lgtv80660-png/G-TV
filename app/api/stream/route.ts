@@ -32,8 +32,6 @@ export async function GET(req: Request) {
     return new Response("Bad stream request", { status: 400 });
   }
 
-  // For VOD/series the catalog's extension is often wrong (provider returns an
-  // HTML error page). Find the real container; bail clearly if none is playable.
   let upstreamUrl = buildStreamUrl(creds, type, id, ext);
   if (type !== "live") {
     const located = await locatePlayable(creds, type, id, ext);
@@ -62,9 +60,13 @@ export async function GET(req: Request) {
       signal: req.signal,
     });
   } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      return new Response(null, { status: 499 });
+    }
     console.log(`[STREAM] ${type}/${id} PROXY upstream FETCH FAILED after ${Date.now() - t0}ms: ${(err as Error).message}`);
     return new Response(`Upstream fetch failed: ${(err as Error).message}`, { status: 502 });
   }
+
   console.log(
     `[STREAM] ${type}/${id} PROXY status=${upstream.status} ttfb=${Date.now() - t0}ms range=${range || "none"} ct=${upstream.headers.get("content-type") || "?"}`,
   );
@@ -93,7 +95,48 @@ export async function GET(req: Request) {
   }
   respHeaders.set("cache-control", "no-store");
 
-  return new Response(upstream.body, {
+  // Protection contre le crash pipe / UND_ERR_SOCKET lors de l'interruption client
+  const upstreamBody = upstream.body;
+  if (!upstreamBody) {
+    return new Response("No upstream body", { status: 500 });
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const reader = upstreamBody.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          controller.enqueue(value);
+        }
+        controller.close();
+      } catch (err: any) {
+        // Ignorer silencieusement les fermetures de socket / interruptions volontaires
+        if (
+          err?.name === "AbortError" ||
+          err?.code === "UND_ERR_SOCKET" ||
+          err?.message?.includes("closed") ||
+          err?.message?.includes("terminated")
+        ) {
+          try {
+            controller.close();
+          } catch {
+            // le controller peut déjà être fermé
+          }
+        } else {
+          controller.error(err);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    },
+    cancel() {
+      // Interception de l'annulation côté navigateur
+    },
+  });
+
+  return new Response(stream, {
     status: upstream.status,
     headers: respHeaders,
   });
