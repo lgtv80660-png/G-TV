@@ -51,7 +51,7 @@ function WatchInner() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Détermination de l'extension avec repli automatique MP4 si MKV
+  // Détermination de l'extension avec repli MP4 obligatoire pour l'audio AAC
   const ext = useMemo(() => {
     let rawExt = extParam || resolved?.ext;
     if (!rawExt && type === "movie") {
@@ -60,7 +60,7 @@ function WatchInner() {
 
     if (isLive) return rawExt || "ts";
 
-    // Reconversion systématique des conteneurs MKV vers MP4 pour le serveur Xtream
+    // Si MKV, conversion forcée en MP4 pour débloquer le son AC-3/EAC-3 sur Vercel
     if (!rawExt || rawExt.toLowerCase() === "mkv") {
       return "mp4";
     }
@@ -94,7 +94,7 @@ function WatchInner() {
 
   const mediaKind = type as StreamKind;
 
-  // ROUTAGE UNIFIÉ SUR /api/stream : Fin des erreurs 404/502
+  // ROUTAGE PROPRE VERCEL
   const sources = useMemo(() => {
     if (isLive) {
       return [`/api/stream?type=live&id=${id}&ext=${ext}`];
