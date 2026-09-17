@@ -13,6 +13,7 @@ export function pickEngine(url: string, ext: string, isLive: boolean): EngineKin
     return "hls";
   }
 
+  // Tout le Live repasse obligatoirement sur mpegts
   if (isLive || e === "ts") {
     return "mpegts";
   }
@@ -61,22 +62,13 @@ export async function attach(
     }
   }
 
-  // 2. HLS
+  // 2. HLS (VOD spécifique)
   if (kind === "hls") {
     const Hls = (await import("hls.js")).default;
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        backBufferLength: 30,
-        maxBufferLength: 30,
-      });
-
-      hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (!data.fatal) return;
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-        else hls.destroy();
       });
 
       hls.loadSource(opts.url);
@@ -85,7 +77,7 @@ export async function attach(
     }
   }
 
-  // 3. NATIVE (VOD MP4)
+  // 3. Native (MP4)
   video.src = opts.url;
   return {
     kind: "native",
