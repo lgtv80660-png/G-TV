@@ -76,27 +76,23 @@ export const api = {
 };
 
 /**
- * URL du proxy interne pour Vercel.
- * - Live : 'm3u8' ou 'ts' (relais binaire)
- * - Movies & Series : Force systématiquement 'mp4' pour forcer le serveur Xtream à délivrer un audio AAC
+ * URL du proxy pour Vercel :
+ * - Live : m3u8 pour découper en segments HLS courts (contourne le timeout Serverless Vercel)
+ * - VOD : Force 'mp4' sur les conteneurs MKV pour convertir l'audio AC-3/EAC-3 en AAC compatible web
  */
 export function streamSrc(kind: StreamKind, id: string | number, ext?: string): string {
   if (kind === "live") {
-    const liveExt = ext && ext !== "ts" ? ext : "m3u8";
-    return `/api/stream?type=live&id=${id}&ext=${encodeURIComponent(liveExt)}`;
+    return `/api/stream?type=live&id=${id}&ext=m3u8`;
   }
 
-  // Conversion systématique des MKV vers MP4 pour forcer le décodage AAC côté serveur Xtream
   const vodExt = !ext || ext.toLowerCase() === "mkv" ? "mp4" : ext;
   return `/api/stream?type=${kind}&id=${id}&ext=${encodeURIComponent(vodExt)}`;
 }
 
-/** Fallback transcode */
 export function transcodeSrc(kind: StreamKind, id: string | number, ext: string): string {
   return `/api/transcode?type=${kind}&id=${id}&ext=${encodeURIComponent(ext)}`;
 }
 
-/** Resolve direct (masqué) */
 export async function resolveSrc(
   kind: StreamKind,
   id: string | number,
