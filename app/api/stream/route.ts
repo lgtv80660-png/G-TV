@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 
 const UA = "VLC/3.0.20 LibVLC/3.0.20";
 
-const httpAgent = new http.Agent({ keepAlive: true, timeout: 15000 });
-const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 15000 });
+const httpAgent = new http.Agent({ keepAlive: true, timeout: 20000 });
+const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 20000 });
 
 export async function GET(req: Request) {
   let creds;
@@ -30,27 +30,19 @@ export async function GET(req: Request) {
     return new Response("Bad stream request", { status: 400 });
   }
 
+  // 1. CODE D'ORIGINE INTACT POUR MOVIES ET SERIES
   let upstreamUrl = buildStreamUrl(creds, type, id, ext);
-
-  // Pour les films et séries : résolution du vrai lien de lecture (support MP4/MKV)
   if (type !== "live") {
     const located = await locatePlayable(creds, type, id, ext);
-    if (located?.url) {
+    if (located) {
       upstreamUrl = located.url;
     }
   }
 
-  return fetchAndStream(upstreamUrl, req, type);
-}
-
-function fetchAndStream(targetUrl: string, req: Request, type: StreamKind, redirects = 5): Promise<Response> {
-  return new Promise((resolve) => {
-    if (redirects <= 0) {
-      return resolve(new Response("Too many redirects", { status: 502 }));
-    }
-
-    const parsed = new URL(targetUrl);
-    const isHttps = parsed.protocol === "https:";
+  // 2. PROXY DE FLUX (Conserve le proxy strict pour éviter d'exposer le fournisseur)
+  return new Promise<Response>((resolve) => {
+    const parsedUrl = new URL(upstreamUrl);
+    const isHttps = parsedUrl.protocol === "https:";
     const client = isHttps ? https : http;
 
     const requestHeaders: Record<string, string> = {
@@ -59,33 +51,23 @@ function fetchAndStream(targetUrl: string, req: Request, type: StreamKind, redir
       Connection: "keep-alive",
     };
 
-    // Transmission des Range headers indispensables pour le Seek dans les Films/Séries
     const range = req.headers.get("range");
-    if (range) requestHeaders["Range"] = range;
+    if (range) {
+      requestHeaders["Range"] = range;
+    }
 
     const options = {
-      hostname: parsed.hostname,
-      port: parsed.port || (isHttps ? 443 : 80),
-      path: parsed.pathname + parsed.search,
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (isHttps ? 443 : 80),
+      path: parsedUrl.pathname + parsedUrl.search,
       method: "GET",
       headers: requestHeaders,
       agent: isHttps ? httpsAgent : httpAgent,
     };
 
     const proxyReq = client.request(options, (upstreamRes) => {
-      // Suivi automatique des redirections 301/302/307
-      if (
-        upstreamRes.statusCode &&
-        [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
-        upstreamRes.headers.location
-      ) {
-        const nextUrl = new URL(upstreamRes.headers.location, targetUrl).toString();
-        return resolve(fetchAndStream(nextUrl, req, type, redirects - 1));
-      }
-
       const respHeaders = new Headers();
 
-      // Transmission des en-têtes nécessaires à la lecture MP4/MKV et au Seeking
       const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
       for (const h of passthrough) {
         if (upstreamRes.headers[h]) {
@@ -100,18 +82,23 @@ function fetchAndStream(targetUrl: string, req: Request, type: StreamKind, redir
 
       respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
       respHeaders.set("X-Accel-Buffering", "no");
-      respHeaders.set("Access-Control-Allow-Origin", "*");
 
       const nodeStream = new ReadableStream({
         start(controller) {
           upstreamRes.on("data", (chunk) => {
-            try { controller.enqueue(chunk); } catch {}
+            try {
+              controller.enqueue(chunk);
+            } catch {}
           });
           upstreamRes.on("end", () => {
-            try { controller.close(); } catch {}
+            try {
+              controller.close();
+            } catch {}
           });
           upstreamRes.on("error", () => {
-            try { controller.close(); } catch {}
+            try {
+              controller.close();
+            } catch {}
           });
         },
         cancel() {
@@ -128,7 +115,7 @@ function fetchAndStream(targetUrl: string, req: Request, type: StreamKind, redir
     });
 
     proxyReq.on("error", (err) => {
-      console.error(`[STREAM PROXY ERROR] ${type}:`, err.message);
+      console.error(`[STREAM PROXY ERROR] ${type}/${id}:`, err.message);
       resolve(new Response(`Stream proxy failed: ${err.message}`, { status: 502 }));
     });
 
