@@ -51,16 +51,14 @@ function WatchInner() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Détermination de l'extension avec repli MP4 obligatoire pour l'audio AAC
   const ext = useMemo(() => {
     let rawExt = extParam || resolved?.ext;
     if (!rawExt && type === "movie") {
       rawExt = (movieInfo?.movie_data as any)?.container_extension;
     }
 
-    if (isLive) return rawExt || "ts";
+    if (isLive) return "m3u8";
 
-    // Si MKV, conversion forcée en MP4 pour débloquer le son AC-3/EAC-3 sur Vercel
     if (!rawExt || rawExt.toLowerCase() === "mkv") {
       return "mp4";
     }
@@ -94,10 +92,9 @@ function WatchInner() {
 
   const mediaKind = type as StreamKind;
 
-  // ROUTAGE PROPRE VERCEL
   const sources = useMemo(() => {
     if (isLive) {
-      return [`/api/stream?type=live&id=${id}&ext=${ext}`];
+      return [`/api/stream?type=live&id=${id}&ext=m3u8`];
     }
     return [`/api/stream?type=${mediaKind}&id=${id}&ext=${encodeURIComponent(ext)}`];
   }, [isLive, mediaKind, id, ext]);
