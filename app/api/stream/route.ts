@@ -45,7 +45,7 @@ export async function GET(req: Request) {
     const upstream = await fetch(upstreamUrl, {
       headers,
       redirect: "follow",
-      // @ts-expect-error - undici option
+      // @ts-expect-error - undici option pour le streaming continu
       duplex: "half",
       signal: req.signal,
     });
@@ -65,13 +65,48 @@ export async function GET(req: Request) {
       respHeaders.set("content-type", type === "live" ? "video/mp2t" : "video/mp4");
     }
 
-    // --- EN-TÊTES CRITIQUES POUR RAILWAY ---
+    // --- EN-TÊTES SPÉCIFIQUES STREAMING EN DIRECT POUR RAILWAY ---
     respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
     respHeaders.set("Pragma", "no-cache");
     respHeaders.set("Expires", "0");
-    respHeaders.set("X-Accel-Buffering", "no"); // Désactive le buffering proxy
+    respHeaders.set("X-Accel-Buffering", "no"); // Interdit au proxy Railway de mettre en mémoire tampon
     respHeaders.set("Connection", "keep-alive");
 
+    // Pour le Live (MPEG-TS infini), on transmet les chunks en temps réel
+    if (type === "live" && upstream.body) {
+      const upstreamReader = upstream.body.getReader();
+      const nodeStream = new ReadableStream({
+        async start(controller) {
+          try {
+            while (true) {
+              const { done, value } = await upstreamReader.read();
+              if (done) {
+                controller.close();
+                break;
+              }
+              controller.enqueue(value);
+            }
+          } catch (err: any) {
+            // Fermeture propre en cas d'interruption par le lecteur ou fermeture d'onglet
+            try {
+              controller.close();
+            } catch {}
+          } finally {
+            upstreamReader.releaseLock();
+          }
+        },
+        cancel() {
+          upstreamReader.cancel().catch(() => {});
+        },
+      });
+
+      return new Response(nodeStream, {
+        status: upstream.status,
+        headers: respHeaders,
+      });
+    }
+
+    // Pour les films et séries (VOD), retour direct avec support du Seeking (Range)
     return new Response(upstream.body, {
       status: upstream.status,
       headers: respHeaders,
