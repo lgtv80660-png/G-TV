@@ -36,10 +36,10 @@ export async function GET(req: Request) {
     } catch {}
   }
 
-  return proxyRailwayStream(upstreamUrl, req, ext, type);
+  return proxyStreamWithRange(upstreamUrl, req, ext, type);
 }
 
-function proxyRailwayStream(targetUrl: string, req: Request, ext: string, type: StreamKind, redirects = 5): Promise<Response> {
+function proxyStreamWithRange(targetUrl: string, req: Request, ext: string, type: StreamKind, redirects = 5): Promise<Response> {
   return new Promise((resolve) => {
     if (redirects <= 0) {
       return resolve(new Response("Too many redirects", { status: 502 }));
@@ -57,9 +57,7 @@ function proxyRailwayStream(targetUrl: string, req: Request, ext: string, type: 
       };
 
       const range = req.headers.get("range");
-      if (range) {
-        headers["Range"] = range;
-      }
+      if (range) headers["Range"] = range;
 
       const options = {
         hostname: parsed.hostname,
@@ -71,54 +69,44 @@ function proxyRailwayStream(targetUrl: string, req: Request, ext: string, type: 
       };
 
       const proxyReq = client.request(options, (upstreamRes) => {
-        // Redirections transparentes
         if (
           upstreamRes.statusCode &&
           [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
           upstreamRes.headers.location
         ) {
           const nextUrl = new URL(upstreamRes.headers.location, targetUrl).toString();
-          return resolve(proxyRailwayStream(nextUrl, req, ext, type, redirects - 1));
+          return resolve(proxyStreamWithRange(nextUrl, req, ext, type, redirects - 1));
         }
 
         const respHeaders = new Headers();
-
-        // Propagation des headers Range pour autoriser le Seek/Avance rapide
+        
+        // Transfert des headers essentiels pour le streaming continu
         const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
-        for (const h of passthrough) {
+        passthrough.forEach((h) => {
           if (upstreamRes.headers[h]) {
             const val = upstreamRes.headers[h];
             respHeaders.set(h, Array.isArray(val) ? val.join(", ") : val);
           }
-        }
+        });
 
         if (!respHeaders.has("content-type")) {
-          if (type === "live") respHeaders.set("content-type", "video/mp2t");
-          else respHeaders.set("content-type", ext === "mkv" ? "video/x-matroska" : "video/mp4");
+          respHeaders.set("content-type", ext === "mkv" ? "video/x-matroska" : "video/mp4");
         }
 
-        // Désactivation du buffering Nginx pour Railway
         respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
         respHeaders.set("X-Accel-Buffering", "no");
         respHeaders.set("Access-Control-Allow-Origin", "*");
 
-        // Conversion en ReadableStream direct sans passer par TransformStream qui bloque Node.js
         const stream = new ReadableStream({
           start(controller) {
             upstreamRes.on("data", (chunk) => {
-              try {
-                controller.enqueue(chunk);
-              } catch {}
+              try { controller.enqueue(chunk); } catch {}
             });
             upstreamRes.on("end", () => {
-              try {
-                controller.close();
-              } catch {}
+              try { controller.close(); } catch {}
             });
             upstreamRes.on("error", () => {
-              try {
-                controller.close();
-              } catch {}
+              try { controller.close(); } catch {}
             });
           },
           cancel() {
@@ -126,6 +114,7 @@ function proxyRailwayStream(targetUrl: string, req: Request, ext: string, type: 
           },
         });
 
+        // RECONSERVATION DU STATUT HTTP DE L'UPSTREAM (ex: 206 Partial Content)
         resolve(
           new Response(stream, {
             status: upstreamRes.statusCode || 200,
@@ -134,14 +123,13 @@ function proxyRailwayStream(targetUrl: string, req: Request, ext: string, type: 
         );
       });
 
-      proxyReq.on("error", (err) => {
-        console.error("[RAILWAY PROXY ERROR]:", err.message);
-        resolve(new Response(`Stream proxy failed: ${err.message}`, { status: 502 }));
+      proxyReq.on("error", () => {
+        resolve(new Response("Stream error", { status: 502 }));
       });
 
       proxyReq.end();
     } catch {
-      resolve(new Response("Proxy error", { status: 500 }));
+      resolve(new Response("Internal Proxy Error", { status: 500 }));
     }
   });
 }
