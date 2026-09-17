@@ -1,12 +1,10 @@
 import { requireSession } from "@/lib/session";
-import http from "http";
-import https from "https";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const httpAgent = new http.Agent({ keepAlive: true, timeout: 10000 });
-const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 10000 });
+// SVG transparent de fallback (évite d'exposer l'URL du fournisseur si l'image 404/500)
+const BLANK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`;
 
 export async function GET(req: Request) {
   try {
@@ -18,72 +16,41 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const imageUrl = searchParams.get("url");
 
-  if (!imageUrl) return new Response("Missing image URL", { status: 400 });
+  if (!imageUrl) {
+    return new Response(BLANK_SVG, {
+      status: 200,
+      headers: { "Content-Type": "image/svg+xml" },
+    });
+  }
 
-  return new Promise<Response>((resolve) => {
-    try {
-      const parsed = new URL(imageUrl);
-      const isHttps = parsed.protocol === "https:";
-      const client = isHttps ? https : http;
+  try {
+    const res = await fetch(imageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      },
+    });
 
-      const options = {
-        hostname: parsed.hostname,
-        port: parsed.port || (isHttps ? 443 : 80),
-        path: parsed.pathname + parsed.search,
-        method: "GET",
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-          Accept: "image/*,*/*;q=0.8",
-        },
-        agent: isHttps ? httpsAgent : httpAgent,
-      };
+    if (!res.ok) throw new Error("Image fetch failed");
 
-      const proxyReq = client.request(options, (upstreamRes) => {
-        if (
-          upstreamRes.statusCode &&
-          [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
-          upstreamRes.headers.location
-        ) {
-          const nextUrl = new URL(upstreamRes.headers.location, imageUrl).toString();
-          return resolve(fetch(nextUrl));
-        }
+    const blob = await res.arrayBuffer();
+    const contentType = res.headers.get("content-type") || "image/jpeg";
 
-        const respHeaders = new Headers();
-        respHeaders.set("Content-Type", upstreamRes.headers["content-type"] || "image/jpeg");
-        respHeaders.set("Cache-Control", "public, max-age=86400");
-
-        const nodeStream = new ReadableStream({
-          start(controller) {
-            upstreamRes.on("data", (chunk) => {
-              try { controller.enqueue(chunk); } catch {}
-            });
-            upstreamRes.on("end", () => {
-              try { controller.close(); } catch {}
-            });
-            upstreamRes.on("error", () => {
-              try { controller.close(); } catch {}
-            });
-          },
-          cancel() {
-            upstreamRes.destroy();
-          },
-        });
-
-        resolve(
-          new Response(nodeStream, {
-            status: 200,
-            headers: respHeaders,
-          })
-        );
-      });
-
-      proxyReq.on("error", () => {
-        resolve(new Response(null, { status: 404 }));
-      });
-
-      proxyReq.end();
-    } catch {
-      resolve(new Response(null, { status: 400 }));
-    }
-  });
+    return new Response(blob, {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=86400, s-maxage=86400",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  } catch {
+    // Si l'image échoue, on renvoie le SVG neutre sans jamais fuiter l'URL brute
+    return new Response(BLANK_SVG, {
+      status: 200,
+      headers: {
+        "Content-Type": "image/svg+xml",
+        "Cache-Control": "public, max-age=86400",
+      },
+    });
+  }
 }
