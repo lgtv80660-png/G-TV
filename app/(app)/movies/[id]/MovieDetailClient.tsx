@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Play, Star, Clock, X, User, Info, Maximize, Video, ArrowLeft, Heart, Film, Volume2 } from "lucide-react";
+import { Play, Star, Clock, X, User, Info, Maximize, Video, ArrowLeft, Heart, Film } from "lucide-react";
 import { useLibrary } from "@/store/library";
 import { api } from "@/lib/api";
 import { ratingNum, yearFrom, cleanName } from "@/lib/utils";
@@ -206,7 +206,6 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
   const backdropUrl = info?.backdrop_path?.[0] || info?.backdrop || info?.cover_big || info?.movie_image;
   const posterUrl = info?.movie_image || info?.cover_big || info?.cover;
 
-  // URL de la page /watch avec passage complet des métadonnées
   const watchIframeUrl = `/watch?type=movie&id=${streamId}&ext=${containerExt}&title=${encodeURIComponent(movieTitle)}${posterUrl ? `&poster=${encodeURIComponent(posterUrl)}` : ""}`;
 
   useEffect(() => {
