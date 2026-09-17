@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { Profile, StreamKind } from "@/lib/xtream/types";
 
 export interface WatchProgress {
@@ -60,6 +60,18 @@ interface LibraryState {
   pushRecentLive: (id: number) => void;
 }
 
+// Fallback sécurisé pour éviter l'erreur "given storage is currently unavailable"
+const safeStorage = createJSONStorage(() => {
+  if (typeof window !== "undefined" && window.localStorage) {
+    return window.localStorage;
+  }
+  return {
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+  };
+});
+
 export const useLibrary = create<LibraryState>()(
   persist(
     (set, get) => ({
@@ -77,28 +89,33 @@ export const useLibrary = create<LibraryState>()(
 
       toggleFav: (kind, item) =>
         set((s) => {
-          const has = s.favourites[kind].some((x) => x.id === item.id);
+          const targetFavs = s.favourites?.[kind] || [];
+          const has = targetFavs.some((x) => x.id === item.id);
           return {
             favourites: {
               ...s.favourites,
               [kind]: has
-                ? s.favourites[kind].filter((x) => x.id !== item.id)
-                : [item, ...s.favourites[kind]],
+                ? targetFavs.filter((x) => x.id !== item.id)
+                : [item, ...targetFavs],
             },
           };
         }),
-      isFav: (kind, id) => get().favourites[kind].some((x) => x.id === id),
+      isFav: (kind, id) => {
+        const targetFavs = get().favourites?.[kind] || [];
+        return targetFavs.some((x) => x.id === id);
+      },
 
       toggleFreeFav: (item) =>
         set((s) => {
-          const has = s.freeFavourites.some((x) => x.url === item.url);
+          const freeFavs = s.freeFavourites || [];
+          const has = freeFavs.some((x) => x.url === item.url);
           return {
             freeFavourites: has
-              ? s.freeFavourites.filter((x) => x.url !== item.url)
-              : [item, ...s.freeFavourites],
+              ? freeFavs.filter((x) => x.url !== item.url)
+              : [item, ...freeFavs],
           };
         }),
-      isFreeFav: (url) => get().freeFavourites.some((x) => x.url === url),
+      isFreeFav: (url) => (get().freeFavourites || []).some((x) => x.url === url),
 
       saveProgress: (p) =>
         set((s) => {
@@ -118,11 +135,13 @@ export const useLibrary = create<LibraryState>()(
         }),
 
       pushRecentLive: (id) =>
-        set((s) => ({ recentLive: [id, ...s.recentLive.filter((x) => x !== id)].slice(0, 24) })),
+        set((s) => ({ recentLive: [id, ...(s.recentLive || []).filter((x) => x !== id)].slice(0, 24) })),
     }),
     {
       name: "G-Player-library",
       version: 3,
+      storage: safeStorage,
+      skipHydration: true,
       migrate: (state: unknown, version: number) => {
         const s = state as LibraryState;
         if (version < 2 && s?.favourites) {
@@ -137,6 +156,7 @@ export const useLibrary = create<LibraryState>()(
 
 /** Continue-watching list, movies & series only, newest first. */
 export function continueWatching(progress: Record<string, WatchProgress>): WatchProgress[] {
+  if (!progress) return [];
   return Object.values(progress)
     .filter(
       (p) =>
