@@ -10,13 +10,11 @@ import { VideoPlayer } from "@/components/player/VideoPlayer";
 import type { LiveStream } from "@/lib/xtream/types";
 
 export function LiveBrowser() {
-  // 1. Récupération et filtrage des catégories
   const { data: allCats = [] } = useLiveCategories();
   const cats = useMemo(() => {
     return allCats.filter((c) => !c.category_name.toLowerCase().includes("free"));
   }, [allCats]);
 
-  // 2. Gestion de l'état (Filtres et sélection)
   const filter = useUI((s) => s.filters.live ?? DEFAULT_FILTER);
   const patchFilter = useUI((s) => s.patchFilter);
   const category = filter.category || "all";
@@ -24,7 +22,6 @@ export function LiveBrowser() {
 
   const setCategory = (id: string) => patchFilter("live", { category: id });
 
-  // Popover de catégories mobile
   const [isCatOpen, setIsCatOpen] = useState(false);
   const [catSearch, setCatSearch] = useState("");
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -49,10 +46,8 @@ export function LiveBrowser() {
     return cats.find((c) => c.category_id === category)?.category_name || "All categories";
   }, [category, cats]);
 
-  // Chaîne sélectionnée
   const [activeChannel, setActiveChannel] = useState<LiveStream | null>(null);
 
-  // 3. Récupération et filtrage des chaînes
   const { data, isLoading } = useLiveStreams(category === "all" ? undefined : category);
 
   const filtered = useMemo(() => {
@@ -62,7 +57,7 @@ export function LiveBrowser() {
     return sortItems(items, sort);
   }, [data, query, sort]);
 
-  // Source binaire MPEG-TS directe pour mpegts.js (Pas d'iframe !)
+  // Transmission directe de l'URL binaire TS au proxy pour mpegts.js
   const liveSources = useMemo(() => {
     if (!activeChannel?.stream_id) return [];
     return [`/api/stream?type=live&id=${activeChannel.stream_id}&ext=ts`];
@@ -75,7 +70,7 @@ export function LiveBrowser() {
   return (
     <div className="flex flex-col md:flex-row h-auto md:h-[calc(100vh-80px)] w-full overflow-hidden border-t border-white/5">
       
-      {/* BARRE POPUP CATÉGORIES (Mobile) */}
+      {/* Mobile Category Dropdown */}
       <div className="block md:hidden p-3 border-b border-white/5 relative z-40" ref={popoverRef}>
         <button
           onClick={() => setIsCatOpen(!isCatOpen)}
@@ -137,7 +132,7 @@ export function LiveBrowser() {
         )}
       </div>
 
-      {/* COLONNE 1 : Catégories (Desktop) */}
+      {/* Colonne 1: Catégories (Desktop) */}
       <div className="hidden md:flex w-1/4 max-w-[280px] shrink-0 border-r border-white/5 bg-ink-900/50 flex-col">
         <div className="p-4 border-b border-white/5 font-semibold text-fog-200">Catégories</div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -165,7 +160,7 @@ export function LiveBrowser() {
         </div>
       </div>
 
-      {/* COLONNE 2 : Liste des Chaînes */}
+      {/* Colonne 2: Liste des Chaînes */}
       <div className="w-full md:w-1/3 md:min-w-[300px] md:shrink-0 border-r border-white/5 bg-ink-900/30 flex flex-col h-[320px] md:h-full">
         <div className="p-4 border-b border-white/5 flex items-center justify-between">
           <span className="font-semibold text-fog-200">Chaînes</span>
@@ -187,18 +182,7 @@ export function LiveBrowser() {
                 )}
               >
                 <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ink-950 overflow-hidden border border-white/5">
-                  {c.stream_icon ? (
-                    <img
-                      src={c.stream_icon.startsWith("http://") ? `/api/image-proxy?url=${encodeURIComponent(c.stream_icon)}` : c.stream_icon}
-                      alt={c.name}
-                      className="h-full w-full object-contain p-1"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = "none";
-                        (e.target as HTMLElement).nextElementSibling?.classList.remove("hidden");
-                      }}
-                    />
-                  ) : null}
-                  <Tv className={`h-5 w-5 text-fog-600 ${c.stream_icon ? "hidden" : ""}`} />
+                  <Tv className="h-5 w-5 text-fog-600" />
                 </div>
                 <span className="truncate text-sm font-medium text-fog-200 flex-1">{cleanName(c.name)}</span>
               </button>
@@ -207,7 +191,7 @@ export function LiveBrowser() {
         </div>
       </div>
 
-      {/* COLONNE 3 : Aperçu Direct du Lecteur (Sans Iframe) */}
+      {/* Colonne 3: Aperçu Player Direct */}
       <div className="flex-1 bg-ink-950 flex flex-col p-4 md:p-6">
         {activeChannel ? (
           <div className="w-full max-w-5xl mx-auto space-y-4">
@@ -218,7 +202,6 @@ export function LiveBrowser() {
                 ext="ts"
                 isLive={true}
                 title={cleanName(activeChannel.name)}
-                poster={activeChannel.stream_icon}
               />
               <Link
                 href={watchDedicatedUrl}
@@ -231,7 +214,7 @@ export function LiveBrowser() {
 
             <div className="px-2">
               <h2 className="text-xl md:text-2xl font-bold text-white">{cleanName(activeChannel.name)}</h2>
-              <p className="text-fog-400 mt-1 text-xs md:text-sm">Cliquez sur l'icône de la fenêtre en haut à droite pour basculer en mode cinéma plein écran.</p>
+              <p className="text-fog-400 mt-1 text-xs md:text-sm">Cliquez sur le bouton en haut à droite pour basculer en plein écran.</p>
             </div>
           </div>
         ) : (
