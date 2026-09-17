@@ -122,7 +122,6 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const { isFav, toggleFav } = useLibrary();
 
-  // Réhydratation propre de Zustand côté client
   useEffect(() => {
     if (useLibrary?.persist?.rehydrate) {
       useLibrary.persist.rehydrate();
