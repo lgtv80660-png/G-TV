@@ -118,17 +118,9 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
   const [activeMedia, setActiveMedia] = useState<"movie" | "trailer" | null>(null);
   const [currentLang, setCurrentLang] = useState("fr");
   const [tmdbTrailerKey, setTmdbTrailerKey] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
 
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const { isFav, toggleFav } = useLibrary();
-
-  useEffect(() => {
-    setMounted(true);
-    if (useLibrary?.persist?.rehydrate) {
-      useLibrary.persist.rehydrate();
-    }
-  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -203,7 +195,10 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
 
   const rating = info?.rating ? ratingNum(info.rating) : 0;
   const year = yearFrom(info?.releasedate || vodData?.releasedate, movieTitle);
-  const isFavorite = mounted && streamId ? isFav("movie", Number(streamId)) : false;
+  
+  // Correction de la vérification de favoris
+  const isFavorite = Boolean(streamId && isFav && typeof isFav === "function" ? isFav("movie", Number(streamId)) : false);
+  
   const tmdbId = info?.tmdb_id || vodData?.tmdb_id;
 
   const rawCast = info?.cast || vodData?.cast || info?.actors || "";
@@ -258,14 +253,16 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
           <ArrowLeft className="w-3.5 h-3.5" /> Back
         </Link>
         <button
-          onClick={() =>
-            toggleFav("movie", {
-              id: Number(streamId),
-              name: movieTitle,
-              poster: posterUrl,
-              ext: containerExt,
-            })
-          }
+          onClick={() => {
+            if (toggleFav) {
+              toggleFav("movie", {
+                id: Number(streamId),
+                name: movieTitle,
+                poster: posterUrl,
+                ext: containerExt,
+              });
+            }
+          }}
           className={`p-2 rounded-full border border-white/10 backdrop-blur-md transition-colors ${
             isFavorite ? "bg-rose-500/20 text-rose-500 border-rose-500/30" : "bg-white/5 text-zinc-400 hover:text-white"
           }`}
@@ -390,6 +387,7 @@ export function MovieDetailClient({ movieId }: { movieId: string }) {
           </div>
         )}
 
+        {/* Synopsis & Section Casting 3D */}
         <div className={activeMedia ? "lg:col-span-7 space-y-4" : "lg:col-span-12 space-y-4"}>
           <div className="bg-[#12141c] border border-white/5 rounded-2xl p-4 sm:p-6 space-y-3">
             <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
