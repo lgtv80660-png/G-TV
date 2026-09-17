@@ -1,4 +1,3 @@
-// Dans app/api/stream/route.ts
 import { requireSession } from "@/lib/session";
 import { buildStreamUrl } from "@/lib/xtream/urls";
 import type { StreamKind } from "@/lib/xtream/types";
@@ -24,9 +23,14 @@ export async function GET(req: Request) {
 
   const creds = await requireSession();
   
-  // Pour le Live, on force la demande m3u8
+  // Pour le Live, on demande le format HLS .m3u8
   if (type === "live") ext = "m3u8";
-  
+
+  // Force l'extension MP4 si c'est du VOD MKV pour assurer la piste son AAC
+  if (type !== "live" && ext.toLowerCase() === "mkv") {
+    ext = "mp4";
+  }
+
   const targetUrl = buildStreamUrl(creds, type, id, ext);
 
   try {
@@ -39,14 +43,14 @@ export async function GET(req: Request) {
       return new Response(`Upstream error ${upstreamRes.status}`, { status: upstreamRes.status });
     }
 
-    // SI C'EST DU LIVE (M3U8) : On réécrit le texte du fichier de playlist
+    // TRAITEMENT SPECIFIQUE HLS / LIVE : Réécriture des segments .ts pour éviter le bloquage CORS
     if (type === "live" || ext === "m3u8") {
       const playlistText = await upstreamRes.text();
       const baseUrl = new URL(targetUrl);
       const baseOrigin = `${baseUrl.protocol}//${baseUrl.host}`;
       const basePath = baseUrl.pathname.substring(0, baseUrl.pathname.lastIndexOf("/") + 1);
 
-      // Transformer les lignes de segments relatives (.ts) en URLs absolues vers le serveur IPTV
+      // Réécriture des URLs de chaque segment .ts de la playlist
       const rewrittenPlaylist = playlistText.replace(/^(?!#)(.+)$/gm, (line) => {
         const trimmed = line.trim();
         if (!trimmed) return line;
@@ -61,11 +65,13 @@ export async function GET(req: Request) {
           "Content-Type": "application/vnd.apple.mpegurl",
           "Cache-Control": "no-cache, no-store, must-revalidate",
           "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Access-Control-Allow-Headers": "*",
         },
       });
     }
 
-    // SI C'EST DE LA VOD (MP4) : Transmission binaire standard
+    // TRAITEMENT VOD STANDARD (Séries & Films)
     const responseHeaders = new Headers();
     const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
     passthrough.forEach((h) => {
@@ -74,6 +80,8 @@ export async function GET(req: Request) {
     });
 
     responseHeaders.set("Access-Control-Allow-Origin", "*");
+    responseHeaders.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    responseHeaders.set("Access-Control-Allow-Headers", "*");
 
     const { readable, writable } = new TransformStream();
     upstreamRes.body?.pipeTo(writable).catch(() => {});
@@ -85,4 +93,15 @@ export async function GET(req: Request) {
   } catch (err: any) {
     return new Response(`Proxy Error: ${err.message}`, { status: 502 });
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "*",
+    },
+  });
 }
