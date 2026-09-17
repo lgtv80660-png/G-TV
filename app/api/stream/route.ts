@@ -2,9 +2,6 @@ import { requireSession } from "@/lib/session";
 import { buildStreamUrl } from "@/lib/xtream/urls";
 import { locatePlayable } from "@/lib/xtream/locate";
 import type { StreamKind } from "@/lib/xtream/types";
-import http from "http";
-import https from "https";
-import { PassThrough } from "stream";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,9 +9,8 @@ export const dynamic = "force-dynamic";
 const UA = "VLC/3.0.20 LibVLC/3.0.20";
 
 export async function GET(req: Request) {
-  let creds;
   try {
-    creds = await requireSession();
+    await requireSession();
   } catch {
     return new Response("Not authenticated", { status: 401 });
   }
@@ -28,134 +24,62 @@ export async function GET(req: Request) {
     return new Response("Bad stream request", { status: 400 });
   }
 
+  const creds = await requireSession();
   let upstreamUrl = buildStreamUrl(creds, type, id, ext);
 
   if (type !== "live") {
     try {
       const located = await locatePlayable(creds, type, id, ext);
-      if (located?.url) {
-        upstreamUrl = located.url;
-      }
-    } catch (e) {
-      console.warn("[LOCATE WARN]: Fallback to default stream URL");
-    }
+      if (located?.url) upstreamUrl = located.url;
+    } catch {}
   }
 
-  return fetchAndStreamNode(upstreamUrl, req, ext);
-}
+  // En-têtes à transmettre au serveur d'origine
+  const headers = new Headers();
+  headers.set("User-Agent", UA);
+  headers.set("Accept", "*/*");
+  
+  const range = req.headers.get("range");
+  if (range) headers.set("Range", range);
 
-function fetchAndStreamNode(targetUrl: string, req: Request, ext: string, redirects = 5): Promise<Response> {
-  return new Promise((resolve) => {
-    if (redirects <= 0) {
-      return resolve(new Response("Too many redirects", { status: 502 }));
+  try {
+    const upstreamRes = await fetch(upstreamUrl, {
+      method: "GET",
+      headers,
+      redirect: "follow",
+    });
+
+    if (!upstreamRes.ok && upstreamRes.status !== 206) {
+      return new Response(`Upstream error: ${upstreamRes.statusText}`, { status: upstreamRes.status });
     }
 
-    try {
-      const parsedUrl = new URL(targetUrl);
-      const isHttps = parsedUrl.protocol === "https:";
-      const client = isHttps ? https : http;
+    // En-têtes de réponse pour le lecteur HTML5
+    const responseHeaders = new Headers();
+    const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
+    
+    passthrough.forEach((h) => {
+      const val = upstreamRes.headers.get(h);
+      if (val) responseHeaders.set(h, val);
+    });
 
-      const requestHeaders: Record<string, string> = {
-        "User-Agent": UA,
-        Accept: "*/*",
-        Connection: "keep-alive",
-      };
-
-      const range = req.headers.get("range");
-      if (range) {
-        requestHeaders["Range"] = range;
-      }
-
-      const options: http.RequestOptions = {
-        hostname: parsedUrl.hostname,
-        port: parsedUrl.port || (isHttps ? 443 : 80),
-        path: parsedUrl.pathname + parsedUrl.search,
-        method: "GET",
-        headers: requestHeaders,
-        rejectUnauthorized: false,
-      };
-
-      const proxyReq = client.request(options, (upstreamRes) => {
-        // Redirections HTTP 301/302/307
-        if (
-          upstreamRes.statusCode &&
-          [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
-          upstreamRes.headers.location
-        ) {
-          const nextUrl = new URL(upstreamRes.headers.location, targetUrl).toString();
-          return resolve(fetchAndStreamNode(nextUrl, req, ext, redirects - 1));
-        }
-
-        const respHeaders = new Headers();
-        
-        // Passthrough des headers vitaux pour le Seeking & HTML5 Video
-        const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
-        for (const h of passthrough) {
-          if (upstreamRes.headers[h]) {
-            const val = upstreamRes.headers[h];
-            respHeaders.set(h, Array.isArray(val) ? val.join(", ") : val);
-          }
-        }
-
-        if (!respHeaders.has("content-type")) {
-          respHeaders.set("content-type", ext === "mkv" ? "video/x-matroska" : "video/mp4");
-        }
-
-        respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
-        respHeaders.set("X-Accel-Buffering", "no");
-        respHeaders.set("Access-Control-Allow-Origin", "*");
-
-        // Utilisation d'un PassThrough Node.js converti en Web ReadableStream
-        const passThroughStream = new PassThrough();
-        upstreamRes.pipe(passThroughStream);
-
-        const webStream = new ReadableStream({
-          start(controller) {
-            passThroughStream.on("data", (chunk) => {
-              try {
-                controller.enqueue(chunk);
-              } catch {}
-            });
-            passThroughStream.on("end", () => {
-              try {
-                controller.close();
-              } catch {}
-            });
-            passThroughStream.on("error", (err) => {
-              try {
-                controller.error(err);
-              } catch {}
-            });
-          },
-          cancel() {
-            upstreamRes.destroy();
-            passThroughStream.destroy();
-          },
-        });
-
-        resolve(
-          new Response(webStream, {
-            status: upstreamRes.statusCode || 200,
-            headers: respHeaders,
-          })
-        );
-      });
-
-      proxyReq.on("error", (err) => {
-        console.error("[STREAM PROXY ERROR]:", err.message);
-        resolve(new Response(`Stream proxy failed: ${err.message}`, { status: 502 }));
-      });
-
-      if (req.signal) {
-        req.signal.addEventListener("abort", () => {
-          proxyReq.destroy();
-        });
-      }
-
-      proxyReq.end();
-    } catch (err: any) {
-      console.error("[STREAM FATAL ERROR]:", err?.message);
-      resolve(new Response("Internal Proxy Error", { status: 500 }));
+    if (!responseHeaders.has("content-type")) {
+      responseHeaders.set("content-type", ext === "mkv" ? "video/x-matroska" : "video/mp4");
     }
-  });
+
+    responseHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
+    responseHeaders.set("Access-Control-Allow-Origin", "*");
+    responseHeaders.set("X-Accel-Buffering", "no");
+
+    // Pipeline direct via Web Streams (Inspiré de ultra-tv)
+    const { readable, writable } = new TransformStream();
+    upstreamRes.body?.pipeTo(writable).catch(() => {});
+
+    return new Response(readable, {
+      status: upstreamRes.status,
+      headers: responseHeaders,
+    });
+  } catch (err: any) {
+    console.error("[STREAM ERROR]:", err.message);
+    return new Response(`Stream proxy failed: ${err.message}`, { status: 502 });
+  }
 }
