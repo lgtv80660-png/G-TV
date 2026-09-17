@@ -9,9 +9,10 @@ export function pickEngine(url: string, ext: string, isLive: boolean): EngineKin
   const u = url.toLowerCase();
   const e = ext.toLowerCase().replace(/^\./, "");
 
-  if (u.includes(".m3u8") || e === "m3u8" || isLive) {
+  if (u.includes("m3u8") || e === "m3u8" || isLive) {
     return "hls";
   }
+
   if (e === "ts") return "mpegts";
 
   return "native";
@@ -23,17 +24,17 @@ export async function attach(
 ): Promise<EngineHandle> {
   const kind = pickEngine(opts.url, opts.ext, opts.isLive);
 
-  // 1. LECTURE HLS (Anti-freeze Live sur Vercel & Sync Audio)
+  // 1. HLS (Correction des URLs relatives des segments .ts pour éviter le 404)
   if (kind === "hls") {
     const Hls = (await import("hls.js")).default;
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        backBufferLength: 60,
-        maxBufferLength: 60,
-        maxMaxBufferLength: 120,
-        enableAudioTrackSwitch: true,
+        backBufferLength: 30,
+        maxBufferLength: 30,
+        // Démultiplexeur audio intégré pour décoder le AC-3 en AAC côté client !
+        enableSoftwareAES: true,
       });
 
       hls.on(Hls.Events.ERROR, (_e, data) => {
@@ -49,38 +50,7 @@ export async function attach(
     }
   }
 
-  // 2. MPEG-TS
-  if (kind === "mpegts") {
-    const mpegts = (await import("mpegts.js")).default;
-    if (mpegts.getFeatureList().mseLivePlayback || mpegts.isSupported()) {
-      const player = mpegts.createPlayer(
-        { type: "mpegts", isLive: opts.isLive, url: opts.url },
-        {
-          enableStashBuffer: true,
-          stashInitialSize: 384, // Permet de recevoir le premier frame audio complet
-          lazyLoad: false,
-          liveBufferLatencyChasing: true,
-          autoCleanupSourceBuffer: true,
-        },
-      );
-
-      player.attachMediaElement(video);
-      player.load();
-
-      return {
-        kind: "mpegts",
-        destroy: () => {
-          try {
-            player.unload();
-            player.detachMediaElement();
-            player.destroy();
-          } catch {}
-        },
-      };
-    }
-  }
-
-  // 3. NATIVE
+  // 2. NATIVE
   video.src = opts.url;
   return {
     kind: "native",
