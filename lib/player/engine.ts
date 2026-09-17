@@ -9,12 +9,12 @@ export function pickEngine(url: string, ext: string, isLive: boolean): EngineKin
   const u = url.toLowerCase();
   const e = ext.toLowerCase().replace(/^\./, "");
 
-  // Si c'm3u8 ou si c'est du Live configuré en HLS
-  if (u.includes(".m3u8") || e === "m3u8" || (isLive && e !== "ts")) {
+  // HLS déclenché pour .m3u8 ou pour les flux Live Vercel
+  if (u.includes("m3u8") || e === "m3u8" || isLive) {
     return "hls";
   }
 
-  if (isLive || e === "ts") return "mpegts";
+  if (e === "ts") return "mpegts";
 
   return "native";
 }
@@ -25,7 +25,7 @@ export async function attach(
 ): Promise<EngineHandle> {
   const kind = pickEngine(opts.url, opts.ext, opts.isLive);
 
-  // 1. LECTURE HLS (Gère le Live & la VOD HLS de façon ultra-fluide)
+  // 1. LECTURE HLS (Incompatible avec les freezes Serverless Vercel)
   if (kind === "hls") {
     const Hls = (await import("hls.js")).default;
     if (Hls.isSupported()) {
@@ -47,7 +47,7 @@ export async function attach(
       hls.attachMedia(video);
       return { kind: "hls", destroy: () => hls.destroy() };
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      // Support natif Safari / iOS
+      // Support Safari/iOS
       video.src = opts.url;
       return {
         kind: "hls",
@@ -59,7 +59,7 @@ export async function attach(
     }
   }
 
-  // 2. MPEG-TS (Si le flux est explicitement en .ts)
+  // 2. MPEG-TS
   if (kind === "mpegts") {
     const mpegts = (await import("mpegts.js")).default;
     if (mpegts.getFeatureList().mseLivePlayback || mpegts.isSupported()) {
