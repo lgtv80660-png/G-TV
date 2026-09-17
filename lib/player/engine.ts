@@ -7,13 +7,13 @@ export interface EngineHandle {
 
 export function pickEngine(url: string, ext: string, isLive: boolean): EngineKind {
   const u = url.toLowerCase();
+  const e = ext.toLowerCase().replace(/^\./, "");
 
-  if (u.includes("/api/hls") || /\.m3u8(\?|$)/.test(u)) {
+  // Si c'm3u8 ou si c'est du Live configuré en HLS
+  if (u.includes(".m3u8") || e === "m3u8" || (isLive && e !== "ts")) {
     return "hls";
   }
 
-  const e = ext.toLowerCase().replace(/^\./, "");
-  if (e === "m3u8") return "hls";
   if (isLive || e === "ts") return "mpegts";
 
   return "native";
@@ -24,15 +24,14 @@ export async function attach(
   opts: { url: string; ext: string; isLive: boolean },
 ): Promise<EngineHandle> {
   const kind = pickEngine(opts.url, opts.ext, opts.isLive);
-  const cleanExt = opts.ext.toLowerCase().replace(/^\./, "");
 
-  // 1. HLS (.m3u8)
+  // 1. LECTURE HLS (Gère le Live & la VOD HLS de façon ultra-fluide)
   if (kind === "hls") {
     const Hls = (await import("hls.js")).default;
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: false,
+        lowLatencyMode: true,
         backBufferLength: 30,
         maxBufferLength: 30,
       });
@@ -47,10 +46,20 @@ export async function attach(
       hls.loadSource(opts.url);
       hls.attachMedia(video);
       return { kind: "hls", destroy: () => hls.destroy() };
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      // Support natif Safari / iOS
+      video.src = opts.url;
+      return {
+        kind: "hls",
+        destroy: () => {
+          video.removeAttribute("src");
+          video.load();
+        },
+      };
     }
   }
 
-  // 2. LIVE / MPEG-TS
+  // 2. MPEG-TS (Si le flux est explicitement en .ts)
   if (kind === "mpegts") {
     const mpegts = (await import("mpegts.js")).default;
     if (mpegts.getFeatureList().mseLivePlayback || mpegts.isSupported()) {
@@ -60,7 +69,7 @@ export async function attach(
           enableStashBuffer: false,
           stashInitialSize: 128,
           lazyLoad: false,
-          liveBufferLatencyChasing: opts.isLive,
+          liveBufferLatencyChasing: true,
           autoCleanupSourceBuffer: true,
         },
       );
@@ -81,16 +90,8 @@ export async function attach(
     }
   }
 
-  // 3. NATIVE & ROUTAGE AUTOMATIQUE MKV VERS TRANSCODE
-  let targetUrl = opts.url;
-
-  // Redirige /api/stream vers /api/transcode pour les fichiers MKV
-  if (cleanExt === "mkv" && !opts.isLive && targetUrl.includes("/api/stream")) {
-    targetUrl = targetUrl.replace("/api/stream", "/api/transcode");
-  }
-
-  video.src = targetUrl;
-  
+  // 3. NATIVE (Pour le MP4)
+  video.src = opts.url;
   return {
     kind: "native",
     destroy: () => {
