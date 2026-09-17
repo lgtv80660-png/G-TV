@@ -28,79 +28,58 @@ export async function GET(req: Request) {
   let upstreamUrl = buildStreamUrl(creds, type, id, ext);
   if (type !== "live") {
     const located = await locatePlayable(creds, type, id, ext);
-    if (located) {
-      upstreamUrl = located.url;
+    if (!located) {
+      return new Response("Title unavailable from provider", {
+        status: 404,
+        headers: { "x-lumen-unavailable": "1" },
+      });
     }
+    upstreamUrl = located.url;
   }
 
-  const headers: Record<string, string> = {
-    "User-Agent": UA,
-    Accept: "*/*",
-    Connection: "keep-alive",
-  };
-
+  const headers: Record<string, string> = { "User-Agent": UA, Accept: "*/*" };
   const range = req.headers.get("range");
   if (range) headers["Range"] = range;
 
+  let upstream: Response;
   try {
-    const upstream = await fetch(upstreamUrl, {
+    upstream = await fetch(upstreamUrl, {
       headers,
       redirect: "follow",
       // @ts-expect-error - undici option
       duplex: "half",
       signal: req.signal,
     });
-
-    if (!upstream.ok && upstream.status !== 206) {
-      return new Response(`Upstream returned ${upstream.status}`, { status: upstream.status });
-    }
-
-    const respHeaders = new Headers();
-    const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
-    for (const h of passthrough) {
-      const v = upstream.headers.get(h);
-      if (v) respHeaders.set(h, v);
-    }
-
-    if (!respHeaders.has("content-type")) {
-      respHeaders.set("content-type", type === "live" ? "video/mp2t" : "video/mp4");
-    }
-
-    respHeaders.set("cache-control", "no-store");
-
-    const upstreamBody = upstream.body;
-    if (!upstreamBody) {
-      return new Response("No body", { status: 500 });
-    }
-
-    const stream = new ReadableStream({
-      async start(controller) {
-        const reader = upstreamBody.getReader();
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            controller.enqueue(value);
-          }
-          controller.close();
-        } catch {
-          try {
-            controller.close();
-          } catch {}
-        } finally {
-          reader.releaseLock();
-        }
-      },
-    });
-
-    return new Response(stream, {
-      status: upstream.status,
-      headers: respHeaders,
-    });
-  } catch (err: any) {
-    if (err.name === "AbortError") {
-      return new Response(null, { status: 499 });
-    }
-    return new Response("Stream connection failed", { status: 502 });
+  } catch (err) {
+    return new Response(`Upstream fetch failed: ${(err as Error).message}`, { status: 502 });
   }
+
+  if (!upstream.ok && upstream.status !== 206) {
+    return new Response(`Upstream returned ${upstream.status}`, { status: upstream.status });
+  }
+
+  const respHeaders = new Headers();
+  const passthrough = [
+    "content-type",
+    "content-length",
+    "content-range",
+    "accept-ranges",
+    "content-disposition",
+  ];
+  for (const h of passthrough) {
+    const v = upstream.headers.get(h);
+    if (v) respHeaders.set(h, v);
+  }
+  if (!respHeaders.has("content-type")) {
+    respHeaders.set("content-type", type === "live" ? "video/mp2t" : "video/mp4");
+  }
+  if (!respHeaders.has("accept-ranges") && type !== "live") {
+    respHeaders.set("accept-ranges", "bytes");
+  }
+  respHeaders.set("cache-control", "no-store");
+
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: respHeaders,
+  });
 }
