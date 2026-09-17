@@ -4,17 +4,10 @@ import { locatePlayable } from "@/lib/xtream/locate";
 import type { StreamKind } from "@/lib/xtream/types";
 
 export const runtime = "nodejs";
-// Streaming responses must not be statically optimized / buffered.
 export const dynamic = "force-dynamic";
 
-const UA = "VLC/3.0.20 LibVLC/3.0.20"; // many providers gate on a player-like UA
+const UA = "VLC/3.0.20 LibVLC/3.0.20";
 
-/**
- * Media proxy. Builds the real provider URL from the session creds and pipes
- * bytes back to the browser, forwarding Range requests so VOD seeking works.
- *   /api/stream?type=movie&id=123&ext=mp4
- *   /api/stream?type=live&id=456&ext=ts
- */
 export async function GET(req: Request) {
   let creds;
   try {
@@ -55,7 +48,7 @@ export async function GET(req: Request) {
     upstream = await fetch(upstreamUrl, {
       headers,
       redirect: "follow",
-      // @ts-expect-error - undici option, allows half-duplex streaming
+      // @ts-expect-error - undici option
       duplex: "half",
       signal: req.signal,
     });
@@ -95,7 +88,6 @@ export async function GET(req: Request) {
   }
   respHeaders.set("cache-control", "no-store");
 
-  // Protection contre le crash pipe / UND_ERR_SOCKET lors de l'interruption client
   const upstreamBody = upstream.body;
   if (!upstreamBody) {
     return new Response("No upstream body", { status: 500 });
@@ -112,7 +104,6 @@ export async function GET(req: Request) {
         }
         controller.close();
       } catch (err: any) {
-        // Ignorer silencieusement les fermetures de socket / interruptions volontaires
         if (
           err?.name === "AbortError" ||
           err?.code === "UND_ERR_SOCKET" ||
@@ -122,7 +113,7 @@ export async function GET(req: Request) {
           try {
             controller.close();
           } catch {
-            // le controller peut déjà être fermé
+            // Controller déjà fermé
           }
         } else {
           controller.error(err);
@@ -132,7 +123,7 @@ export async function GET(req: Request) {
       }
     },
     cancel() {
-      // Interception de l'annulation côté navigateur
+      // Annulation propre
     },
   });
 
