@@ -24,19 +24,13 @@ export async function GET(req: Request) {
     return new Response("Bad stream request", { status: 400 });
   }
 
-  // Force la demande MP4 pour le démultiplexage audio natif
-  if (type !== "live" && ext.toLowerCase() === "mkv") {
-    ext = "mp4";
-  }
-
-  if (type === "live" && ext === "ts") {
-    ext = "m3u8";
-  }
-
   const creds = await requireSession();
   let upstreamUrl = buildStreamUrl(creds, type, id, ext);
 
-  if (type !== "live") {
+  // Pour le live, on tente d'obtenir la bonne URL HLS
+  if (type === "live") {
+    upstreamUrl = buildStreamUrl(creds, "live", id, "m3u8");
+  } else {
     try {
       const located = await locatePlayable(creds, type, id, ext);
       if (located?.url) upstreamUrl = located.url;
@@ -58,7 +52,7 @@ export async function GET(req: Request) {
     });
 
     if (!upstreamRes.ok && upstreamRes.status !== 206) {
-      return new Response(`Upstream stream error: ${upstreamRes.statusText}`, {
+      return new Response(`Upstream error: ${upstreamRes.statusText}`, {
         status: upstreamRes.status,
       });
     }
@@ -70,14 +64,6 @@ export async function GET(req: Request) {
       const val = upstreamRes.headers.get(h);
       if (val) responseHeaders.set(h, val);
     });
-
-    if (!responseHeaders.has("content-type")) {
-      if (type === "live" || ext === "m3u8") {
-        responseHeaders.set("content-type", "application/vnd.apple.mpegurl");
-      } else {
-        responseHeaders.set("content-type", "video/mp4");
-      }
-    }
 
     responseHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
     responseHeaders.set("Access-Control-Allow-Origin", "*");
