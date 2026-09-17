@@ -31,19 +31,18 @@ export async function attach(
           url: opts.url,
         },
         {
-          enableStashBuffer: false,             // Empêche l'accumulation de données et les freezes
-          stashInitialSize: 0,                   // Démarre la lecture instantanément
-          liveBufferLatencyChasing: true,       // Force le rattrapage automatique du direct
-          liveBufferLatencyMax: 2.5,             // Saute au direct si le retard dépasse 2.5s
-          liveBufferLatencyMin: 0.8,
-          autoCleanupSourceBuffer: true,        // Libère la mémoire du navigateur au fur et à mesure
+          enableStashBuffer: true,               // Activé pour amortir les variations de débit Railway/Vercel
+          stashInitialSize: 384 * 1024,          // Tampon de sécurité (384KB) pour éviter le freeze immédiat
+          liveBufferLatencyChasing: true,       // Rattrapage doux du direct
+          liveBufferLatencyMax: 5.0,             // Seuil étendu à 5s pour éviter les sauts brutaux
+          liveBufferLatencyMin: 1.5,
+          autoCleanupSourceBuffer: true,        // Nettoyage régulier de la mémoire
         },
       );
 
       player.attachMediaElement(video);
       player.load();
 
-      // Gestion des micro-coupures réseau Vercel
       player.on(mpegts.Events.ERROR, (errType: string) => {
         if (errType === mpegts.ErrorTypes.NETWORK_ERROR) {
           try {
@@ -67,13 +66,12 @@ export async function attach(
     }
   }
 
-  // Fallback HLS
   if (kind === "hls") {
     const Hls = (await import("hls.js")).default;
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
+        lowLatencyMode: false,
         backBufferLength: 10,
       });
 
@@ -90,7 +88,6 @@ export async function attach(
     }
   }
 
-  // Native MP4
   video.src = opts.url;
   return {
     kind: "native",
