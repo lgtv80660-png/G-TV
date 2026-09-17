@@ -1,6 +1,9 @@
 import { requireSession } from "@/lib/session";
 import { buildStreamUrl } from "@/lib/xtream/urls";
+import { locatePlayable } from "@/lib/xtream/locate";
 import type { StreamKind } from "@/lib/xtream/types";
+import http from "http";
+import https from "https";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,80 +22,115 @@ export async function GET(req: Request) {
   const id = searchParams.get("id");
   let ext = searchParams.get("ext") || "mp4";
 
-  if (!type || !id) return new Response("Bad request", { status: 400 });
+  if (!type || !id || !["movie", "series", "live"].includes(type)) {
+    return new Response("Bad stream request", { status: 400 });
+  }
 
-  const creds = await requireSession();
-  
-  // Pour le Live, on demande le format HLS .m3u8
-  if (type === "live") ext = "m3u8";
-
-  // Force l'extension MP4 si c'est du VOD MKV pour assurer la piste son AAC
-  if (type !== "live" && ext.toLowerCase() === "mkv") {
+  // En Live, on remet le format original TS binaire pour mpegts.js
+  if (type === "live") {
+    ext = "ts";
+  } else if (ext.toLowerCase() === "mkv") {
     ext = "mp4";
   }
 
-  const targetUrl = buildStreamUrl(creds, type, id, ext);
+  const creds = await requireSession();
+  let upstreamUrl = buildStreamUrl(creds, type, id, ext);
 
-  try {
-    const upstreamRes = await fetch(targetUrl, {
-      headers: { "User-Agent": UA, Accept: "*/*" },
-      redirect: "follow",
-    });
-
-    if (!upstreamRes.ok) {
-      return new Response(`Upstream error ${upstreamRes.status}`, { status: upstreamRes.status });
-    }
-
-    // TRAITEMENT SPECIFIQUE HLS / LIVE : Réécriture des segments .ts pour éviter le bloquage CORS
-    if (type === "live" || ext === "m3u8") {
-      const playlistText = await upstreamRes.text();
-      const baseUrl = new URL(targetUrl);
-      const baseOrigin = `${baseUrl.protocol}//${baseUrl.host}`;
-      const basePath = baseUrl.pathname.substring(0, baseUrl.pathname.lastIndexOf("/") + 1);
-
-      // Réécriture des URLs de chaque segment .ts de la playlist
-      const rewrittenPlaylist = playlistText.replace(/^(?!#)(.+)$/gm, (line) => {
-        const trimmed = line.trim();
-        if (!trimmed) return line;
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
-        if (trimmed.startsWith("/")) return `${baseOrigin}${trimmed}`;
-        return `${baseOrigin}${basePath}${trimmed}`;
-      });
-
-      return new Response(rewrittenPlaylist, {
-        status: 200,
-        headers: {
-          "Content-Type": "application/vnd.apple.mpegurl",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, OPTIONS",
-          "Access-Control-Allow-Headers": "*",
-        },
-      });
-    }
-
-    // TRAITEMENT VOD STANDARD (Séries & Films)
-    const responseHeaders = new Headers();
-    const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
-    passthrough.forEach((h) => {
-      const v = upstreamRes.headers.get(h);
-      if (v) responseHeaders.set(h, v);
-    });
-
-    responseHeaders.set("Access-Control-Allow-Origin", "*");
-    responseHeaders.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-    responseHeaders.set("Access-Control-Allow-Headers", "*");
-
-    const { readable, writable } = new TransformStream();
-    upstreamRes.body?.pipeTo(writable).catch(() => {});
-
-    return new Response(readable, {
-      status: upstreamRes.status,
-      headers: responseHeaders,
-    });
-  } catch (err: any) {
-    return new Response(`Proxy Error: ${err.message}`, { status: 502 });
+  if (type !== "live") {
+    try {
+      const located = await locatePlayable(creds, type, id, ext);
+      if (located?.url) upstreamUrl = located.url;
+    } catch {}
   }
+
+  return new Promise<Response>((resolve) => {
+    try {
+      const parsed = new URL(upstreamUrl);
+      const isHttps = parsed.protocol === "https:";
+      const client = isHttps ? https : http;
+
+      const headers: Record<string, string> = {
+        "User-Agent": UA,
+        Accept: "*/*",
+      };
+
+      const range = req.headers.get("range");
+      if (range) headers["Range"] = range;
+
+      const options = {
+        hostname: parsed.hostname,
+        port: parsed.port || (isHttps ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: "GET",
+        headers,
+        rejectUnauthorized: false,
+      };
+
+      const proxyReq = client.request(options, (upstreamRes) => {
+        // Redirection automatique si le fournisseur change de serveur
+        if (
+          upstreamRes.statusCode &&
+          [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
+          upstreamRes.headers.location
+        ) {
+          const nextUrl = new URL(upstreamRes.headers.location, upstreamUrl).toString();
+          return resolve(fetch(nextUrl, { headers: { "User-Agent": UA } }));
+        }
+
+        const respHeaders = new Headers();
+        
+        const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
+        passthrough.forEach((h) => {
+          if (upstreamRes.headers[h]) {
+            const val = upstreamRes.headers[h];
+            respHeaders.set(h, Array.isArray(val) ? val.join(", ") : val);
+          }
+        });
+
+        if (!respHeaders.has("content-type")) {
+          respHeaders.set("content-type", type === "live" ? "video/mp2t" : "video/mp4");
+        }
+
+        // Headers CORS & anti-buffering stricts
+        respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
+        respHeaders.set("Access-Control-Allow-Origin", "*");
+        respHeaders.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+        respHeaders.set("X-Accel-Buffering", "no");
+
+        const stream = new ReadableStream({
+          start(controller) {
+            upstreamRes.on("data", (chunk) => {
+              try { controller.enqueue(chunk); } catch {}
+            });
+            upstreamRes.on("end", () => {
+              try { controller.close(); } catch {}
+            });
+            upstreamRes.on("error", () => {
+              try { controller.close(); } catch {}
+            });
+          },
+          cancel() {
+            upstreamRes.destroy();
+          },
+        });
+
+        resolve(
+          new Response(stream, {
+            status: upstreamRes.statusCode || 200,
+            headers: respHeaders,
+          })
+        );
+      });
+
+      proxyReq.on("error", (err) => {
+        resolve(new Response(`Proxy Stream Error: ${err.message}`, { status: 502 }));
+      });
+
+      proxyReq.end();
+    } catch (err: any) {
+      resolve(new Response(`Fatal Error: ${err.message}`, { status: 500 }));
+    }
+  });
 }
 
 export async function OPTIONS() {
