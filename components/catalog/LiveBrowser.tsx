@@ -62,9 +62,9 @@ export function LiveBrowser() {
     return sortItems(items, sort);
   }, [data, query, sort]);
 
-  // Flux direct via l'API proxy pour éviter la dépendance HLS
-  const streamUrl = activeChannel
-    ? `/api/stream?type=live&id=${activeChannel.stream_id}&ext=ts`
+  // Utilisation de la route de lecture sécurisée avec l'ID du stream
+  const watchIframeUrl = activeChannel
+    ? `/watch?type=live&id=${activeChannel.stream_id}&ext=ts&title=${encodeURIComponent(cleanName(activeChannel.name))}`
     : null;
 
   return (
@@ -202,21 +202,20 @@ export function LiveBrowser() {
         </div>
       </div>
 
-      {/* COLONNE 3 : Aperçu du Player Direct */}
+      {/* COLONNE 3 : Aperçu du Player via Iframe /Watch */}
       <div className="flex-1 bg-ink-950 flex flex-col p-4 md:p-6">
         {activeChannel ? (
           <div className="w-full max-w-5xl mx-auto space-y-4">
             <div className="aspect-video w-full bg-black rounded-xl overflow-hidden relative border border-white/10 shadow-2xl group">
-              <video
+              <iframe
                 key={activeChannel.stream_id}
-                src={streamUrl!}
-                controls
-                autoPlay
-                playsInline
-                className="w-full h-full object-contain"
+                src={watchIframeUrl!}
+                className="w-full h-full border-0"
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowFullScreen
               />
               <Link
-                href={`/watch?type=live&id=${activeChannel.stream_id}&ext=ts&title=${encodeURIComponent(cleanName(activeChannel.name))}`}
+                href={watchIframeUrl!}
                 className="absolute top-3 right-3 bg-black/60 hover:bg-iris-500 text-white hover:text-ink-950 p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all backdrop-blur-sm z-10"
                 title="Plein écran"
               >
