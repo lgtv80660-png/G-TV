@@ -57,7 +57,6 @@ export function LiveBrowser() {
     return sortItems(items, sort);
   }, [data, query, sort]);
 
-  // Transmission directe de l'URL binaire TS au proxy pour mpegts.js
   const liveSources = useMemo(() => {
     if (!activeChannel?.stream_id) return [];
     return [`/api/stream?type=live&id=${activeChannel.stream_id}&ext=ts`];
@@ -191,11 +190,11 @@ export function LiveBrowser() {
         </div>
       </div>
 
-      {/* Colonne 3: Aperçu Player Direct */}
-      <div className="flex-1 bg-ink-950 flex flex-col p-4 md:p-6">
+      {/* Colonne 3: Zone du Lecteur (Conteneur Stricte Centré) */}
+      <div className="flex-1 bg-ink-950 flex flex-col items-center justify-center p-4 md:p-6 overflow-hidden">
         {activeChannel ? (
-          <div className="w-full max-w-5xl mx-auto space-y-4">
-            <div className="aspect-video w-full bg-black rounded-xl overflow-hidden relative border border-white/10 shadow-2xl group">
+          <div className="w-full max-w-5xl flex flex-col items-center justify-center space-y-4">
+            <div className="relative w-full aspect-video max-h-[70vh] bg-black rounded-xl overflow-hidden border border-white/10 shadow-2xl group flex items-center justify-center">
               <VideoPlayer
                 key={activeChannel.stream_id}
                 sources={liveSources}
@@ -212,7 +211,7 @@ export function LiveBrowser() {
               </Link>
             </div>
 
-            <div className="px-2">
+            <div className="w-full text-left px-2">
               <h2 className="text-xl md:text-2xl font-bold text-white">{cleanName(activeChannel.name)}</h2>
               <p className="text-fog-400 mt-1 text-xs md:text-sm">Cliquez sur le bouton en haut à droite pour basculer en plein écran.</p>
             </div>
