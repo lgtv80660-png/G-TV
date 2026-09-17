@@ -2,11 +2,17 @@ import { requireSession } from "@/lib/session";
 import { buildStreamUrl } from "@/lib/xtream/urls";
 import { locatePlayable } from "@/lib/xtream/locate";
 import type { StreamKind } from "@/lib/xtream/types";
+import http from "http";
+import https from "https";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const UA = "VLC/3.0.20 LibVLC/3.0.20";
+
+// Utilisation d'agents Node.js natifs qui autorisent les flux HTTP/1.1 continus
+const httpAgent = new http.Agent({ keepAlive: true, timeout: 15000 });
+const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 15000 });
 
 export async function GET(req: Request) {
   let creds;
@@ -33,50 +39,93 @@ export async function GET(req: Request) {
     }
   }
 
-  const headers: Record<string, string> = {
-    "User-Agent": UA,
-    Accept: "*/*",
-  };
+  return new Promise<Response>((resolve) => {
+    const parsedUrl = new URL(upstreamUrl);
+    const isHttps = parsedUrl.protocol === "https:";
+    const client = isHttps ? https : http;
 
-  const range = req.headers.get("range");
-  if (range) headers["Range"] = range;
+    const requestHeaders: Record<string, string> = {
+      "User-Agent": UA,
+      Accept: "*/*",
+      Connection: "keep-alive",
+    };
 
-  try {
-    // 1. On effectue la requête sans duplex option pour éviter le blocage de socket Node.js sur Railway
-    const upstream = await fetch(upstreamUrl, {
-      headers,
-      redirect: "follow",
-      signal: req.signal,
+    const range = req.headers.get("range");
+    if (range) {
+      requestHeaders["Range"] = range;
+    }
+
+    const options = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (isHttps ? 443 : 80),
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: "GET",
+      headers: requestHeaders,
+      agent: isHttps ? httpsAgent : httpAgent,
+    };
+
+    const proxyReq = client.request(options, (upstreamRes) => {
+      const respHeaders = new Headers();
+
+      const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
+      for (const h of passthrough) {
+        if (upstreamRes.headers[h]) {
+          const val = upstreamRes.headers[h];
+          respHeaders.set(h, Array.isArray(val) ? val.join(", ") : val);
+        }
+      }
+
+      if (!respHeaders.has("content-type")) {
+        respHeaders.set("content-type", type === "live" ? "video/mp2t" : "video/mp4");
+      }
+
+      respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
+      respHeaders.set("X-Accel-Buffering", "no");
+
+      // Conversion du flux Node.js IncomingMessage en ReadableStream natif pour Web Response
+      const nodeStream = new ReadableStream({
+        start(controller) {
+          upstreamRes.on("data", (chunk) => {
+            try {
+              controller.enqueue(chunk);
+            } catch {}
+          });
+          upstreamRes.on("end", () => {
+            try {
+              controller.close();
+            } catch {}
+          });
+          upstreamRes.on("error", (err) => {
+            try {
+              controller.error(err);
+            } catch {}
+          });
+        },
+        cancel() {
+          upstreamRes.destroy();
+        },
+      });
+
+      resolve(
+        new Response(nodeStream, {
+          status: upstreamRes.statusCode || 200,
+          headers: respHeaders,
+        })
+      );
     });
 
-    if (!upstream.ok && upstream.status !== 206) {
-      console.error(`[STREAM FAIL] ${type}/${id} - Status: ${upstream.status}`);
-      return new Response(`Upstream returned ${upstream.status}`, { status: upstream.status });
-    }
-
-    const respHeaders = new Headers();
-    const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
-    for (const h of passthrough) {
-      const v = upstream.headers.get(h);
-      if (v) respHeaders.set(h, v);
-    }
-
-    if (!respHeaders.has("content-type")) {
-      respHeaders.set("content-type", type === "live" ? "video/mp2t" : "video/mp4");
-    }
-
-    respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
-    respHeaders.set("X-Accel-Buffering", "no");
-
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: respHeaders,
+    proxyReq.on("error", (err) => {
+      console.error(`[STREAM PROXY ERROR] ${type}/${id}:`, err.message);
+      resolve(new Response(`Stream proxy failed: ${err.message}`, { status: 502 }));
     });
-  } catch (err: any) {
-    console.error(`[STREAM ERROR] ${type}/${id}:`, err?.message || err);
-    if (err.name === "AbortError") {
-      return new Response(null, { status: 499 });
+
+    // Gestion de l'annulation client (changement de chaîne ou fermeture de page)
+    if (req.signal) {
+      req.signal.addEventListener("abort", () => {
+        proxyReq.destroy();
+      });
     }
-    return new Response(`Stream connection failed: ${err?.message || "Unknown"}`, { status: 502 });
-  }
+
+    proxyReq.end();
+  });
 }
