@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 const UA = "VLC/3.0.20 LibVLC/3.0.20";
 
-const httpAgent = new http.Agent({ keepAlive: true, timeout: 10000 });
-const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 10000 });
+const httpAgent = new http.Agent({ keepAlive: true, timeout: 15000 });
+const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 15000 });
 
 export async function GET(req: Request) {
   try {
@@ -47,7 +47,7 @@ function fetchAndStream(targetUrl: string, req: Request, redirects = 5): Promise
     const requestHeaders: Record<string, string> = {
       "User-Agent": UA,
       Accept: "*/*",
-      Connection: "close",
+      Connection: "keep-alive",
     };
 
     const range = req.headers.get("range");
@@ -63,7 +63,6 @@ function fetchAndStream(targetUrl: string, req: Request, redirects = 5): Promise
     };
 
     const proxyReq = client.request(options, (upstreamRes) => {
-      // Suivi de la redirection HTTP -> HTTP/HTTPS transparente côté serveur
       if (
         upstreamRes.statusCode &&
         [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
@@ -77,6 +76,7 @@ function fetchAndStream(targetUrl: string, req: Request, redirects = 5): Promise
       respHeaders.set("Content-Type", targetUrl.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t");
       respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
       respHeaders.set("X-Accel-Buffering", "no");
+      respHeaders.set("Connection", "keep-alive");
       respHeaders.set("Access-Control-Allow-Origin", "*");
 
       const nodeStream = new ReadableStream({
