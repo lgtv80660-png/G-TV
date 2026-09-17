@@ -4,6 +4,7 @@ import { useMemo, useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Tv, Maximize, LayoutGrid, ChevronDown, Check, Search } from "lucide-react";
 import { useLiveCategories, useLiveStreams } from "@/lib/hooks";
+import { SmartImage } from "@/components/ui/SmartImage";
 import { useUI, DEFAULT_FILTER } from "@/store/ui";
 import { sortItems, cleanName, cn } from "@/lib/utils";
 import type { LiveStream } from "@/lib/xtream/types";
@@ -62,15 +63,15 @@ export function LiveBrowser() {
     return sortItems(items, sort);
   }, [data, query, sort]);
 
-  // Utilisation de la route de lecture sécurisée avec l'ID du stream
-  const watchIframeUrl = activeChannel
+  // Génération de l'URL du lecteur Lumen
+  const watchUrl = activeChannel
     ? `/watch?type=live&id=${activeChannel.stream_id}&ext=ts&title=${encodeURIComponent(cleanName(activeChannel.name))}`
     : null;
 
   return (
     <div className="flex flex-col md:flex-row h-auto md:h-[calc(100vh-80px)] w-full overflow-hidden border-t border-white/5">
       
-      {/* BARRE POPUP CATÉGORIES (Mobile Uniquement) */}
+      {/* BARRE POPUP CATÉGORIES (Mobile Uniquement : md:hidden) */}
       <div className="block md:hidden p-3 border-b border-white/5 relative z-40" ref={popoverRef}>
         <button
           onClick={() => setIsCatOpen(!isCatOpen)}
@@ -132,7 +133,7 @@ export function LiveBrowser() {
         )}
       </div>
 
-      {/* COLONNE 1 : Catégories (Web Uniquement) */}
+      {/* COLONNE 1 : Catégories (Web Uniquement : hidden md:flex) */}
       <div className="hidden md:flex w-1/4 max-w-[280px] shrink-0 border-r border-white/5 bg-ink-900/50 flex-col">
         <div className="p-4 border-b border-white/5 font-semibold text-fog-200">Catégories</div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -160,7 +161,7 @@ export function LiveBrowser() {
         </div>
       </div>
 
-      {/* COLONNE 2 : Chaînes (Liste) */}
+      {/* COLONNE 2 : Chaînes (Liste verticale) */}
       <div className="w-full md:w-1/3 md:min-w-[300px] md:shrink-0 border-r border-white/5 bg-ink-900/30 flex flex-col h-[320px] md:h-full">
         <div className="p-4 border-b border-white/5 flex items-center justify-between">
           <span className="font-semibold text-fog-200">Chaînes</span>
@@ -181,20 +182,21 @@ export function LiveBrowser() {
                   activeChannel?.stream_id === c.stream_id ? "bg-ink-800" : "hover:bg-ink-850"
                 )}
               >
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ink-950 overflow-hidden border border-white/5">
-                  {c.stream_icon ? (
-                    <img
-                      src={c.stream_icon.startsWith("http://") ? `/api/image-proxy?url=${encodeURIComponent(c.stream_icon)}` : c.stream_icon}
-                      alt={c.name}
-                      className="h-full w-full object-contain p-1"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = "none";
-                        (e.target as HTMLElement).nextElementSibling?.classList.remove("hidden");
-                      }}
-                    />
-                  ) : null}
-                  <Tv className={`h-5 w-5 text-fog-600 ${c.stream_icon ? "hidden" : ""}`} />
-                </div>
+<div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ink-950 overflow-hidden border border-white/5">
+  {c.stream_icon ? (
+    <img
+      src={c.stream_icon.startsWith("http://") ? `/api/image-proxy?url=${encodeURIComponent(c.stream_icon)}` : c.stream_icon}
+      alt={c.name}
+      className="h-full w-full object-contain p-1"
+      onError={(e) => {
+        // En cas d'erreur de chargement, remplace par l'icône TV
+        (e.target as HTMLElement).style.display = "none";
+        (e.target as HTMLElement).nextElementSibling?.classList.remove("hidden");
+      }}
+    />
+  ) : null}
+  <Tv className={`h-5 w-5 text-fog-600 ${c.stream_icon ? "hidden" : ""}`} />
+</div>
                 <span className="truncate text-sm font-medium text-fog-200 flex-1">{cleanName(c.name)}</span>
               </button>
             ))
@@ -202,30 +204,30 @@ export function LiveBrowser() {
         </div>
       </div>
 
-      {/* COLONNE 3 : Aperçu du Player via Iframe /Watch */}
+      {/* COLONNE 3 : Aperçu du Player */}
       <div className="flex-1 bg-ink-950 flex flex-col p-4 md:p-6">
         {activeChannel ? (
           <div className="w-full max-w-5xl mx-auto space-y-4">
             <div className="aspect-video w-full bg-black rounded-xl overflow-hidden relative border border-white/10 shadow-2xl group">
               <iframe
-                key={activeChannel.stream_id}
-                src={watchIframeUrl!}
-                className="w-full h-full border-0"
-                allow="autoplay; fullscreen; picture-in-picture"
-                allowFullScreen
+                src={watchUrl!}
+                className="w-full h-full pointer-events-none"
+                allow="autoplay; fullscreen"
               />
               <Link
-                href={watchIframeUrl!}
-                className="absolute top-3 right-3 bg-black/60 hover:bg-iris-500 text-white hover:text-ink-950 p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all backdrop-blur-sm z-10"
-                title="Plein écran"
+                href={watchUrl!}
+                className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
               >
-                <Maximize className="h-4 w-4" />
+                <div className="bg-iris-500 text-ink-950 px-6 py-3 rounded-full font-bold flex items-center gap-2 transform hover:scale-105 transition-transform">
+                  <Maximize className="h-5 w-5" />
+                  Regarder en plein écran
+                </div>
               </Link>
             </div>
 
             <div className="px-2">
               <h2 className="text-xl md:text-2xl font-bold text-white">{cleanName(activeChannel.name)}</h2>
-              <p className="text-fog-400 mt-1 text-xs md:text-sm">Cliquez sur le bouton de plein écran pour basculer vers le lecteur dédié.</p>
+              <p className="text-fog-400 mt-1 text-xs md:text-sm">Cliquez sur la vidéo pour basculer vers le lecteur complet.</p>
             </div>
           </div>
         ) : (
