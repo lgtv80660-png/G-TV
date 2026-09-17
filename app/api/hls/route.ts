@@ -52,17 +52,14 @@ export async function GET(req: Request) {
   try {
     const upstreamRes = await fetchUpstream(playlistUrl);
 
-    // SI L'UPSTREAM EST DU TS BRUT (Pas une playlist M3U8)
-    // On génère dynamiquement un conteneur HLS virtuel pour hls.js
     if (!upstreamRes.text.includes("#EXTM3U") && !/mpegurl/i.test(upstreamRes.contentType)) {
       if (id) {
-        const streamTsUrl = `/api/stream?type=live&id=${id}&ext=ts`;
         const virtualPlaylist = `#EXTM3U
 #EXT-X-VERSION:3
 #EXT-X-TARGETDURATION:10
 #EXT-X-MEDIA-SEQUENCE:0
 #EXTINF:10.0,
-${streamTsUrl}
+/api/stream?type=live&id=${id}&ext=ts
 `;
         return new Response(virtualPlaylist, {
           headers: {
@@ -85,9 +82,9 @@ ${streamTsUrl}
       },
     });
   } catch (err: any) {
-    console.error("[HLS ROUTE ERROR]:", err?.message || err);
-    
-    // Fallback ultime en cas de crash upstream : servir la chaîne via /api/stream
+    console.error("[HLS ROUTE TIMEOUT/ERROR]:", err?.message || err);
+
+    // Si la résolution HLS prend trop de temps, on bascule directement vers le flux MPEG-TS
     if (id) {
       const fallbackPlaylist = `#EXTM3U
 #EXT-X-VERSION:3
@@ -114,8 +111,12 @@ function fetchUpstream(targetUrl: string): Promise<{ text: string; contentType: 
       targetUrl,
       {
         method: "GET",
-        headers: { "User-Agent": UA, Accept: "application/vnd.apple.mpegurl,*/*" },
-        timeout: 10000,
+        headers: {
+          "User-Agent": UA,
+          Accept: "application/vnd.apple.mpegurl,*/*",
+          Connection: "close", // Fermeture immédiate de la socket
+        },
+        timeout: 5000, // Timeout court (5s) pour basculer rapidement sur /api/stream
       },
       (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -138,7 +139,7 @@ function fetchUpstream(targetUrl: string): Promise<{ text: string; contentType: 
       }
     );
 
-    req.on("error", reject);
+    req.on("error", (e) => reject(e));
     req.on("timeout", () => {
       req.destroy();
       reject(new Error("Upstream timeout"));
