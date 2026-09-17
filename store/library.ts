@@ -5,17 +5,15 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import type { Profile, StreamKind } from "@/lib/xtream/types";
 
 export interface WatchProgress {
-  /** unique key: `${kind}:${id}` (id = stream/episode id) */
   key: string;
   kind: StreamKind;
   id: string;
-  /** for series episodes, the parent series id (for "continue with next") */
   seriesId?: string;
   title: string;
   poster?: string;
   ext: string;
-  position: number; // seconds
-  duration: number; // seconds
+  position: number;
+  duration: number;
   updatedAt: number;
 }
 
@@ -47,29 +45,27 @@ interface LibraryState {
 
   addProfile: (p: Profile) => void;
   removeProfile: (id: string) => void;
-
   toggleFav: (kind: keyof FavSets, item: FavItem) => void;
   isFav: (kind: keyof FavSets, id: number) => boolean;
-
   toggleFreeFav: (item: FreeFavItem) => void;
   isFreeFav: (url: string) => boolean;
-
   saveProgress: (p: WatchProgress) => void;
   clearProgress: (key: string) => void;
-
   pushRecentLive: (id: number) => void;
 }
 
-// Fallback sécurisé pour éviter l'erreur "given storage is currently unavailable"
+// Storage factice pour le serveur SSR qui n'émet aucun warning
+const dummyStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+};
+
 const safeStorage = createJSONStorage(() => {
-  if (typeof window !== "undefined" && window.localStorage) {
+  if (typeof window !== "undefined" && typeof window.localStorage !== "undefined") {
     return window.localStorage;
   }
-  return {
-    getItem: () => null,
-    setItem: () => {},
-    removeItem: () => {},
-  };
+  return dummyStorage;
 });
 
 export const useLibrary = create<LibraryState>()(
@@ -89,37 +85,29 @@ export const useLibrary = create<LibraryState>()(
 
       toggleFav: (kind, item) =>
         set((s) => {
-          const targetFavs = s.favourites?.[kind] || [];
-          const has = targetFavs.some((x) => x.id === item.id);
+          const list = s.favourites?.[kind] || [];
+          const has = list.some((x) => x.id === item.id);
           return {
             favourites: {
               ...s.favourites,
-              [kind]: has
-                ? targetFavs.filter((x) => x.id !== item.id)
-                : [item, ...targetFavs],
+              [kind]: has ? list.filter((x) => x.id !== item.id) : [item, ...list],
             },
           };
         }),
-      isFav: (kind, id) => {
-        const targetFavs = get().favourites?.[kind] || [];
-        return targetFavs.some((x) => x.id === id);
-      },
+      isFav: (kind, id) => (get().favourites?.[kind] || []).some((x) => x.id === id),
 
       toggleFreeFav: (item) =>
         set((s) => {
-          const freeFavs = s.freeFavourites || [];
-          const has = freeFavs.some((x) => x.url === item.url);
+          const list = s.freeFavourites || [];
+          const has = list.some((x) => x.url === item.url);
           return {
-            freeFavourites: has
-              ? freeFavs.filter((x) => x.url !== item.url)
-              : [item, ...freeFavs],
+            freeFavourites: has ? list.filter((x) => x.url !== item.url) : [item, ...list],
           };
         }),
       isFreeFav: (url) => (get().freeFavourites || []).some((x) => x.url === url),
 
       saveProgress: (p) =>
         set((s) => {
-          // drop near-finished items from continue-watching (>95%)
           if (p.duration > 0 && p.position / p.duration > 0.95) {
             const next = { ...s.progress };
             delete next[p.key];
@@ -135,34 +123,24 @@ export const useLibrary = create<LibraryState>()(
         }),
 
       pushRecentLive: (id) =>
-        set((s) => ({ recentLive: [id, ...(s.recentLive || []).filter((x) => x !== id)].slice(0, 24) })),
+        set((s) => ({
+          recentLive: [id, ...(s.recentLive || []).filter((x) => x !== id)].slice(0, 24),
+        })),
     }),
     {
       name: "G-Player-library",
       version: 3,
       storage: safeStorage,
       skipHydration: true,
-      migrate: (state: unknown, version: number) => {
-        const s = state as LibraryState;
-        if (version < 2 && s?.favourites) {
-          s.favourites = { live: [], movie: [], series: [] };
-        }
-        if (version < 3 && s && !s.freeFavourites) s.freeFavourites = [];
-        return s;
-      },
-    },
-  ),
+    }
+  )
 );
 
-/** Continue-watching list, movies & series only, newest first. */
 export function continueWatching(progress: Record<string, WatchProgress>): WatchProgress[] {
   if (!progress) return [];
   return Object.values(progress)
     .filter(
-      (p) =>
-        (p.kind === "movie" || p.kind === "series") &&
-        p.duration > 0 &&
-        p.position > 5
+      (p) => (p.kind === "movie" || p.kind === "series") && p.duration > 0 && p.position > 5
     )
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
