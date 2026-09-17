@@ -9,7 +9,7 @@ export interface EngineHandle {
 }
 
 const NATIVE_OK = ["mp4", "m4v", "mov", "webm", "ogg"];
-const RISKY = ["mkv", "avi", "wmv", "flv", "ts"]; // browser-native support is unreliable
+const RISKY = ["mkv", "avi", "wmv", "flv", "ts"];
 
 export function pickEngine(url: string, ext: string, isLive: boolean): EngineKind {
   const u = url.toLowerCase();
@@ -18,7 +18,7 @@ export function pickEngine(url: string, ext: string, isLive: boolean): EngineKin
   if (e === "m3u8") return "hls";
   if (isLive || e === "ts") return "mpegts";
   if (NATIVE_OK.includes(e)) return "native";
-  if (RISKY.includes(e)) return "native"; // attempt; onError surfaces a fallback
+  if (RISKY.includes(e)) return "native";
   return "native";
 }
 
@@ -31,10 +31,9 @@ export async function attach(
   if (kind === "hls") {
     const Hls = (await import("hls.js")).default;
     if (Hls.isSupported()) {
-      // Buffer + retry tuning for smooth, self-healing live playback.
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: false, // favour stability over latency for IPTV
+        lowLatencyMode: false,
         backBufferLength: 30,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
@@ -45,7 +44,6 @@ export async function attach(
         ...(opts.isLive ? { liveSyncDurationCount: 3, liveMaxLatencyDurationCount: 10 } : {}),
       });
 
-      // auto-recover instead of stalling on transient network/media errors
       hls.on(Hls.Events.ERROR, (_e, data) => {
         if (!data.fatal) return;
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
@@ -58,7 +56,7 @@ export async function attach(
       return { kind: "hls", destroy: () => hls.destroy() };
     }
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = opts.url; // Safari native HLS
+      video.src = opts.url;
       return { kind: "native", destroy: () => void (video.src = "") };
     }
     video.src = opts.url;
@@ -71,7 +69,7 @@ export async function attach(
       const player = mpegts.createPlayer(
         { type: "mpegts", isLive: opts.isLive, url: opts.url },
         {
-          enableStashBuffer: false, // start playing ASAP, don't pre-buffer
+          enableStashBuffer: false, // Démarrage immédiat sans pré-buffering
           stashInitialSize: 128,
           lazyLoad: false,
           liveBufferLatencyChasing: opts.isLive,
@@ -81,23 +79,35 @@ export async function attach(
           autoCleanupSourceBuffer: true,
         },
       );
+
+      // AUTO-RECOVERY : Empêche mpegts de planter indéfiniment si Railway/Vercel coupe un paquet
+      player.on(mpegts.Events.ERROR, (errorType: string, errorDetail: string) => {
+        console.warn("[MPEGTS ERROR]:", errorType, errorDetail);
+        try {
+          player.unload();
+          player.load();
+          player.play();
+        } catch {}
+      });
+
       player.attachMediaElement(video);
       player.load();
+
       return {
         kind: "mpegts",
         destroy: () => {
           try {
+            player.unload();
+            player.detachMediaElement();
             player.destroy();
           } catch {}
         },
       };
     }
-    // fall through to native if MSE unavailable
     video.src = opts.url;
     return { kind: "native", destroy: () => void (video.src = "") };
   }
 
-  // native
   video.src = opts.url;
   return { kind: "native", destroy: () => void (video.src = "") };
 }
