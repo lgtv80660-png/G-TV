@@ -6,8 +6,7 @@ import type { StreamKind } from "@/lib/xtream/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// User-Agent imitant un lecteur Smart TV / Chrome réél
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+const UA = "VLC/3.0.20 LibVLC/3.0.20";
 
 export async function GET(req: Request) {
   let creds;
@@ -34,32 +33,24 @@ export async function GET(req: Request) {
     }
   }
 
-  // Headers d'imitation de navigateur complet pour contourner le blocage Datacenter
   const headers: Record<string, string> = {
     "User-Agent": UA,
     Accept: "*/*",
-    "Accept-Encoding": "identity",
-    Connection: "close", // Empêche la réutilisation de socket bloquée
   };
 
   const range = req.headers.get("range");
   if (range) headers["Range"] = range;
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout max
-
+    // 1. On effectue la requête sans duplex option pour éviter le blocage de socket Node.js sur Railway
     const upstream = await fetch(upstreamUrl, {
       headers,
       redirect: "follow",
-      // @ts-expect-error - undici option
-      duplex: "half",
-      signal: controller.signal,
+      signal: req.signal,
     });
 
-    clearTimeout(timeoutId);
-
     if (!upstream.ok && upstream.status !== 206) {
+      console.error(`[STREAM FAIL] ${type}/${id} - Status: ${upstream.status}`);
       return new Response(`Upstream returned ${upstream.status}`, { status: upstream.status });
     }
 
@@ -84,7 +75,7 @@ export async function GET(req: Request) {
   } catch (err: any) {
     console.error(`[STREAM ERROR] ${type}/${id}:`, err?.message || err);
     if (err.name === "AbortError") {
-      return new Response("Upstream Timeout", { status: 504 });
+      return new Response(null, { status: 499 });
     }
     return new Response(`Stream connection failed: ${err?.message || "Unknown"}`, { status: 502 });
   }
