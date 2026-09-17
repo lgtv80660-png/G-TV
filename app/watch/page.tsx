@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { streamSrc, resolveSrc, transcodeSrc, api } from "@/lib/api";
+import { streamSrc, api } from "@/lib/api";
 import { useSeriesInfo } from "@/lib/hooks";
 import { useLibrary } from "@/store/library";
 import { parseDurationToSeconds } from "@/lib/utils";
@@ -70,19 +70,12 @@ function WatchInner() {
 
   const mediaKind = type as StreamKind;
 
-  const { data: resolved, isLoading: resolving } = useQuery({
-    queryKey: ["resolve", type, id, ext],
-    queryFn: () => resolveSrc(mediaKind, id, ext),
-    enabled: !isLive && !!id,
-    staleTime: 5 * 60 * 1000,
-  });
-
+  // FORCER LE PROXY LOCAL POUR SÉRIES, MOVIES ET LIVE (Anti SSL Error & Anti Fuite Provider)
   const sources = useMemo(() => {
     const proxy = streamSrc(mediaKind, id, ext);
     if (isLive) return [proxy, `/api/hls?id=${id}`];
-    const transcode = transcodeSrc(mediaKind, id, ext);
-    return [...(resolved?.directOk && resolved.url ? [resolved.url] : []), proxy, transcode];
-  }, [isLive, mediaKind, id, ext, resolved]);
+    return [proxy]; // Toujours utiliser /api/stream en premier pour éviter c13aeda.net:88
+  }, [isLive, mediaKind, id, ext]);
 
   const recentedRef = useRef(false);
   if (type === "live" && !recentedRef.current && id) {
@@ -128,14 +121,6 @@ function WatchInner() {
     return (
       <div className="grid h-dvh place-items-center text-fog-500">
         Nothing to play. <button onClick={() => router.back()} className="ml-2 underline">Go back</button>
-      </div>
-    );
-  }
-
-  if (!isLive && resolving) {
-    return (
-      <div className="grid h-dvh place-items-center bg-black">
-        <Loader2 className="h-10 w-10 animate-spin text-iris-400" />
       </div>
     );
   }
