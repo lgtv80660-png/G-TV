@@ -75,21 +75,30 @@ export const api = {
     getJson<{ epg_listings: EpgListing[] }>(`/api/epg?stream_id=${streamId}&limit=${limit}`),
 };
 
-/** Construction stricte de l'URL du proxy interne pour tous les médias. */
+/** 
+ * Construction de l'URL du proxy interne.
+ * Demande au serveur Xtream les formats pris en charge par le navigateur :
+ * - Live : m3u8 (HLS découpe en chunks, anti-freeze Railway)
+ * - Movies & Series MKV : mp4 (transcodage conteneur par le fournisseur)
+ */
 export function streamSrc(kind: StreamKind, id: string | number, ext?: string): string {
-  const defaultExt = kind === "live" ? "ts" : "mp4";
-  const e = ext || defaultExt;
-  return `/api/stream?type=${kind}&id=${id}&ext=${encodeURIComponent(e)}`;
+  if (kind === "live") {
+    const liveExt = ext && ext !== "ts" ? ext : "m3u8";
+    return `/api/stream?type=live&id=${id}&ext=${encodeURIComponent(liveExt)}`;
+  }
+
+  // Force l'extension mp4 si le fichier original est un MKV
+  const vodExt = !ext || ext.toLowerCase() === "mkv" ? "mp4" : ext;
+  return `/api/stream?type=${kind}&id=${id}&ext=${encodeURIComponent(vodExt)}`;
 }
 
-/** Fallback de transcodage ffmpeg. */
+/** Fallback de transcodage ffmpeg (conservé pour compatibilité) */
 export function transcodeSrc(kind: StreamKind, id: string | number, ext: string): string {
   return `/api/transcode?type=${kind}&id=${id}&ext=${encodeURIComponent(ext)}`;
 }
 
 /** 
- * Résolution des données de conteneur.
- * Désactivation du directOk pour empêcher le navigateur de contourner le proxy Railway.
+ * Résolution des données de conteneur (force toujours le passage par /api/stream)
  */
 export async function resolveSrc(
   kind: StreamKind,
@@ -103,8 +112,8 @@ export async function resolveSrc(
     if (!res.ok) return { url: null, directOk: false };
     const data = await res.json();
     return { 
-      url: null, // Force l'utilisation du proxy /api/stream
-      directOk: false, // Empêche l'exposition de l'URL brute du serveur IPTV
+      url: null, // Masque l'URL brute
+      directOk: false, // Empêche l'exposition
       ext: data?.ext || ext 
     };
   } catch {
