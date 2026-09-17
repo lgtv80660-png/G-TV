@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/session";
 import { buildStreamUrl } from "@/lib/xtream/urls";
+import { locatePlayable } from "@/lib/xtream/locate";
 import type { StreamKind } from "@/lib/xtream/types";
 import http from "http";
 import https from "https";
@@ -7,16 +8,15 @@ import https from "https";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// En-têtes identiques à un vrai décodeur / VLC Player pour passer les filtres IP
-const HEADERS_OVERRIDE = {
-  "User-Agent": "IPTVSmartersPlayer",
-  "Accept": "*/*",
-  "Connection": "close",
-};
+const UA = "VLC/3.0.20 LibVLC/3.0.20";
+
+const httpAgent = new http.Agent({ keepAlive: true, timeout: 15000 });
+const httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false, timeout: 15000 });
 
 export async function GET(req: Request) {
+  let creds;
   try {
-    await requireSession();
+    creds = await requireSession();
   } catch {
     return new Response("Not authenticated", { status: 401 });
   }
@@ -30,66 +30,78 @@ export async function GET(req: Request) {
     return new Response("Bad stream request", { status: 400 });
   }
 
-  const creds = await requireSession();
-  const upstreamUrl = buildStreamUrl(creds, type, id, ext);
+  let upstreamUrl = buildStreamUrl(creds, type, id, ext);
 
-  return new Promise<Response>((resolve) => {
-    fetchWithSocketBypass(upstreamUrl, req, resolve);
-  });
-}
-
-function fetchWithSocketBypass(targetUrl: string, req: Request, resolve: (res: Response) => void, redirects = 5) {
-  if (redirects <= 0) {
-    return resolve(new Response("Too many redirects", { status: 502 }));
+  // REDIRECTION DIRECTE CLIENT POUR LA LIVE TV (Gratuit & Sans blocage Railway)
+  if (type === "live") {
+    return Response.redirect(upstreamUrl, 302);
   }
 
-  const parsed = new URL(targetUrl);
-  const isHttps = parsed.protocol === "https:";
-  const client = isHttps ? https : http;
+  // PROXY NODE.JS POUR LES FILMS ET SÉRIES (Support Seeking/Range)
+  const located = await locatePlayable(creds, type, id, ext);
+  if (located) {
+    upstreamUrl = located.url;
+  }
 
-  const requestHeaders: Record<string, string> = {
-    ...HEADERS_OVERRIDE,
-    Host: parsed.host,
-  };
+  return new Promise<Response>((resolve) => {
+    const parsedUrl = new URL(upstreamUrl);
+    const isHttps = parsedUrl.protocol === "https:";
+    const client = isHttps ? https : http;
 
-  const range = req.headers.get("range");
-  if (range) requestHeaders["Range"] = range;
+    const requestHeaders: Record<string, string> = {
+      "User-Agent": UA,
+      Accept: "*/*",
+      Connection: "keep-alive",
+    };
 
-  const proxyReq = client.request(
-    {
-      hostname: parsed.hostname,
-      port: parsed.port || (isHttps ? 443 : 80),
-      path: parsed.pathname + parsed.search,
+    const range = req.headers.get("range");
+    if (range) {
+      requestHeaders["Range"] = range;
+    }
+
+    const options = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (isHttps ? 443 : 80),
+      path: parsedUrl.pathname + parsedUrl.search,
       method: "GET",
       headers: requestHeaders,
-      rejectUnauthorized: false,
-    },
-    (upstreamRes) => {
-      // Suivi manuel des redirections 302 pour éviter le socket hang up
-      if (
-        upstreamRes.statusCode &&
-        [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
-        upstreamRes.headers.location
-      ) {
-        const nextUrl = new URL(upstreamRes.headers.location, targetUrl).toString();
-        return fetchWithSocketBypass(nextUrl, req, resolve, redirects - 1);
+      agent: isHttps ? httpsAgent : httpAgent,
+    };
+
+    const proxyReq = client.request(options, (upstreamRes) => {
+      const respHeaders = new Headers();
+
+      const passthrough = ["content-type", "content-length", "content-range", "accept-ranges"];
+      for (const h of passthrough) {
+        if (upstreamRes.headers[h]) {
+          const val = upstreamRes.headers[h];
+          respHeaders.set(h, Array.isArray(val) ? val.join(", ") : val);
+        }
       }
 
-      const respHeaders = new Headers();
-      respHeaders.set("Content-Type", typeContentType(targetUrl));
+      if (!respHeaders.has("content-type")) {
+        respHeaders.set("content-type", "video/mp4");
+      }
+
       respHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
       respHeaders.set("X-Accel-Buffering", "no");
 
       const nodeStream = new ReadableStream({
         start(controller) {
           upstreamRes.on("data", (chunk) => {
-            try { controller.enqueue(chunk); } catch {}
+            try {
+              controller.enqueue(chunk);
+            } catch {}
           });
           upstreamRes.on("end", () => {
-            try { controller.close(); } catch {}
+            try {
+              controller.close();
+            } catch {}
           });
-          upstreamRes.on("error", () => {
-            try { controller.close(); } catch {}
+          upstreamRes.on("error", (err) => {
+            try {
+              controller.error(err);
+            } catch {}
           });
         },
         cancel() {
@@ -99,22 +111,23 @@ function fetchWithSocketBypass(targetUrl: string, req: Request, resolve: (res: R
 
       resolve(
         new Response(nodeStream, {
-          status: 200,
+          status: upstreamRes.statusCode || 200,
           headers: respHeaders,
         })
       );
+    });
+
+    proxyReq.on("error", (err) => {
+      console.error(`[STREAM PROXY ERROR] ${type}/${id}:`, err.message);
+      resolve(new Response(`Stream proxy failed: ${err.message}`, { status: 502 }));
+    });
+
+    if (req.signal) {
+      req.signal.addEventListener("abort", () => {
+        proxyReq.destroy();
+      });
     }
-  );
 
-  proxyReq.on("error", (err) => {
-    console.error(`[STREAM PROXY ERROR]: ${err.message}`);
-    resolve(new Response(`Socket connection rejected by IPTV server`, { status: 502 }));
+    proxyReq.end();
   });
-
-  proxyReq.end();
-}
-
-function typeContentType(url: string): string {
-  if (url.endsWith(".m3u8")) return "application/vnd.apple.mpegurl";
-  return "video/mp2t";
 }
