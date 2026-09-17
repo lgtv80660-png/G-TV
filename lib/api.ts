@@ -75,11 +75,10 @@ export const api = {
     getJson<{ epg_listings: EpgListing[] }>(`/api/epg?stream_id=${streamId}&limit=${limit}`),
 };
 
-/** 
- * Construction de l'URL du proxy interne.
- * Demande au serveur Xtream les formats pris en charge par le navigateur :
- * - Live : m3u8 (HLS découpe en chunks, anti-freeze Railway)
- * - Movies & Series MKV : mp4 (transcodage conteneur par le fournisseur)
+/**
+ * URL du proxy interne pour Vercel.
+ * - Live : 'm3u8' ou 'ts' (relais binaire)
+ * - Movies & Series : Force systématiquement 'mp4' pour forcer le serveur Xtream à délivrer un audio AAC
  */
 export function streamSrc(kind: StreamKind, id: string | number, ext?: string): string {
   if (kind === "live") {
@@ -87,19 +86,17 @@ export function streamSrc(kind: StreamKind, id: string | number, ext?: string): 
     return `/api/stream?type=live&id=${id}&ext=${encodeURIComponent(liveExt)}`;
   }
 
-  // Force l'extension mp4 si le fichier original est un MKV
+  // Conversion systématique des MKV vers MP4 pour forcer le décodage AAC côté serveur Xtream
   const vodExt = !ext || ext.toLowerCase() === "mkv" ? "mp4" : ext;
   return `/api/stream?type=${kind}&id=${id}&ext=${encodeURIComponent(vodExt)}`;
 }
 
-/** Fallback de transcodage ffmpeg (conservé pour compatibilité) */
+/** Fallback transcode */
 export function transcodeSrc(kind: StreamKind, id: string | number, ext: string): string {
   return `/api/transcode?type=${kind}&id=${id}&ext=${encodeURIComponent(ext)}`;
 }
 
-/** 
- * Résolution des données de conteneur (force toujours le passage par /api/stream)
- */
+/** Resolve direct (masqué) */
 export async function resolveSrc(
   kind: StreamKind,
   id: string | number,
@@ -111,10 +108,10 @@ export async function resolveSrc(
     });
     if (!res.ok) return { url: null, directOk: false };
     const data = await res.json();
-    return { 
-      url: null, // Masque l'URL brute
-      directOk: false, // Empêche l'exposition
-      ext: data?.ext || ext 
+    return {
+      url: null,
+      directOk: false,
+      ext: data?.ext || ext,
     };
   } catch {
     return { url: null, directOk: false };
