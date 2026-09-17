@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { streamSrc, api } from "@/lib/api";
+import { streamSrc, resolveSrc, api } from "@/lib/api";
 import { useSeriesInfo } from "@/lib/hooks";
 import { useLibrary } from "@/store/library";
 import { parseDurationToSeconds } from "@/lib/utils";
@@ -18,7 +18,7 @@ function WatchInner() {
 
   const type = (params.get("type") as StreamKind) || "movie";
   const id = params.get("id") || "";
-  const ext = params.get("ext") || (type === "live" ? "ts" : "mp4");
+  const extParam = params.get("ext");
   const title = params.get("title") || "Now Playing";
   const urlPoster = params.get("poster") || params.get("cover") || undefined;
   const resume = Number(params.get("resume") || 0);
@@ -43,6 +43,24 @@ function WatchInner() {
     enabled: type === "movie" && !!id,
     staleTime: 30 * 60 * 1000,
   });
+
+  // Résolution de l'extension réelle pour Movies/Series sans utiliser directement l'URL distante
+  const { data: resolved, isLoading: resolving } = useQuery({
+    queryKey: ["resolve", type, id, extParam],
+    queryFn: () => resolveSrc(type as StreamKind, id, extParam || "mp4"),
+    enabled: !isLive && !!id,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const ext = useMemo(() => {
+    if (extParam) return extParam;
+    if (resolved?.ext) return resolved.ext;
+    if (type === "movie") {
+      const container = (movieInfo?.movie_data as any)?.container_extension;
+      if (container) return container;
+    }
+    return isLive ? "ts" : "mp4";
+  }, [extParam, resolved, type, movieInfo, isLive]);
 
   const poster = useMemo(() => {
     if (urlPoster) return urlPoster;
@@ -70,11 +88,11 @@ function WatchInner() {
 
   const mediaKind = type as StreamKind;
 
-  // FORCER LE PROXY LOCAL POUR SÉRIES, MOVIES ET LIVE (Anti SSL Error & Anti Fuite Provider)
+  // TOUJOURS PASSER PAR /api/stream EN UTILISANT L'EXTENSION DÉTECTÉE
   const sources = useMemo(() => {
     const proxy = streamSrc(mediaKind, id, ext);
     if (isLive) return [proxy, `/api/hls?id=${id}`];
-    return [proxy]; // Toujours utiliser /api/stream en premier pour éviter c13aeda.net:88
+    return [proxy];
   }, [isLive, mediaKind, id, ext]);
 
   const recentedRef = useRef(false);
@@ -121,6 +139,14 @@ function WatchInner() {
     return (
       <div className="grid h-dvh place-items-center text-fog-500">
         Nothing to play. <button onClick={() => router.back()} className="ml-2 underline">Go back</button>
+      </div>
+    );
+  }
+
+  if (!isLive && resolving) {
+    return (
+      <div className="grid h-dvh place-items-center bg-black">
+        <Loader2 className="h-10 w-10 animate-spin text-iris-400" />
       </div>
     );
   }
