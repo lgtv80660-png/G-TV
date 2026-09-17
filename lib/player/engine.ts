@@ -1,6 +1,3 @@
-// Picks the right playback strategy for a stream and wires it to a <video>.
-// Live/TS → mpegts.js · HLS (.m3u8) → hls.js · mp4 → native · mkv/other → native (may fail).
-
 export type EngineKind = "mpegts" | "hls" | "native" | "unsupported";
 
 export interface EngineHandle {
@@ -17,8 +14,7 @@ export function pickEngine(url: string, ext: string, isLive: boolean): EngineKin
   const e = ext.toLowerCase().replace(/^\./, "");
   if (e === "m3u8") return "hls";
   if (isLive || e === "ts") return "mpegts";
-  if (NATIVE_OK.includes(e)) return "native";
-  if (RISKY.includes(e)) return "native";
+  if (NATIVE_OK.includes(e) || RISKY.includes(e)) return "native";
   return "native";
 }
 
@@ -28,6 +24,7 @@ export async function attach(
 ): Promise<EngineHandle> {
   const kind = pickEngine(opts.url, opts.ext, opts.isLive);
 
+  // 1. HLS (.m3u8)
   if (kind === "hls") {
     const Hls = (await import("hls.js")).default;
     if (Hls.isSupported()) {
@@ -36,12 +33,6 @@ export async function attach(
         lowLatencyMode: false,
         backBufferLength: 30,
         maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        manifestLoadingMaxRetry: 4,
-        levelLoadingMaxRetry: 6,
-        fragLoadingMaxRetry: 8,
-        fragLoadingRetryDelay: 500,
-        ...(opts.isLive ? { liveSyncDurationCount: 3, liveMaxLatencyDurationCount: 10 } : {}),
       });
 
       hls.on(Hls.Events.ERROR, (_e, data) => {
@@ -55,40 +46,22 @@ export async function attach(
       hls.attachMedia(video);
       return { kind: "hls", destroy: () => hls.destroy() };
     }
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = opts.url;
-      return { kind: "native", destroy: () => void (video.src = "") };
-    }
-    video.src = opts.url;
-    return { kind: "native", destroy: () => void (video.src = "") };
   }
 
+  // 2. LIVE / MPEG-TS
   if (kind === "mpegts") {
     const mpegts = (await import("mpegts.js")).default;
     if (mpegts.getFeatureList().mseLivePlayback || mpegts.isSupported()) {
       const player = mpegts.createPlayer(
         { type: "mpegts", isLive: opts.isLive, url: opts.url },
         {
-          enableStashBuffer: false, // Démarrage immédiat sans pré-buffering
+          enableStashBuffer: false,
           stashInitialSize: 128,
           lazyLoad: false,
           liveBufferLatencyChasing: opts.isLive,
-          liveBufferLatencyChasingOnPaused: false,
-          liveBufferLatencyMaxLatency: 3.0,
-          liveBufferLatencyMinRemain: 0.5,
           autoCleanupSourceBuffer: true,
         },
       );
-
-      // AUTO-RECOVERY : Empêche mpegts de planter indéfiniment si Railway/Vercel coupe un paquet
-      player.on(mpegts.Events.ERROR, (errorType: string, errorDetail: string) => {
-        console.warn("[MPEGTS ERROR]:", errorType, errorDetail);
-        try {
-          player.unload();
-          player.load();
-          player.play();
-        } catch {}
-      });
 
       player.attachMediaElement(video);
       player.load();
@@ -104,10 +77,15 @@ export async function attach(
         },
       };
     }
-    video.src = opts.url;
-    return { kind: "native", destroy: () => void (video.src = "") };
   }
 
+  // 3. NATIVE (Films & Séries MP4/MKV)
   video.src = opts.url;
-  return { kind: "native", destroy: () => void (video.src = "") };
+  return {
+    kind: "native",
+    destroy: () => {
+      video.removeAttribute("src");
+      video.load();
+    },
+  };
 }
