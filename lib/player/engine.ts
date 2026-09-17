@@ -9,14 +9,8 @@ export function pickEngine(url: string, ext: string, isLive: boolean): EngineKin
   const u = url.toLowerCase();
   const e = ext.toLowerCase().replace(/^\./, "");
 
-  if (u.includes(".m3u8") || e === "m3u8") {
-    return "hls";
-  }
-
-  // Tout le Live repasse obligatoirement sur mpegts
-  if (isLive || e === "ts") {
-    return "mpegts";
-  }
+  if (u.includes(".m3u8") || e === "m3u8") return "hls";
+  if (isLive || e === "ts") return "mpegts";
 
   return "native";
 }
@@ -27,7 +21,6 @@ export async function attach(
 ): Promise<EngineHandle> {
   const kind = pickEngine(opts.url, opts.ext, opts.isLive);
 
-  // 1. MPEG-TS pour le Live TV
   if (kind === "mpegts") {
     const mpegts = (await import("mpegts.js")).default;
     if (mpegts.getFeatureList().mseLivePlayback || mpegts.isSupported()) {
@@ -38,16 +31,28 @@ export async function attach(
           url: opts.url,
         },
         {
-          enableStashBuffer: false,
-          stashInitialSize: 128,
-          lazyLoad: false,
-          liveBufferLatencyChasing: true,
-          autoCleanupSourceBuffer: true,
+          enableStashBuffer: false,             // Empêche l'accumulation de données et les freezes
+          stashInitialSize: 0,                   // Démarre la lecture instantanément
+          liveBufferLatencyChasing: true,       // Force le rattrapage automatique du direct
+          liveBufferLatencyMax: 2.5,             // Saute au direct si le retard dépasse 2.5s
+          liveBufferLatencyMin: 0.8,
+          autoCleanupSourceBuffer: true,        // Libère la mémoire du navigateur au fur et à mesure
         },
       );
 
       player.attachMediaElement(video);
       player.load();
+
+      // Gestion des micro-coupures réseau Vercel
+      player.on(mpegts.Events.ERROR, (errType: string) => {
+        if (errType === mpegts.ErrorTypes.NETWORK_ERROR) {
+          try {
+            player.unload();
+            player.load();
+            player.play().catch(() => {});
+          } catch {}
+        }
+      });
 
       return {
         kind: "mpegts",
@@ -62,13 +67,21 @@ export async function attach(
     }
   }
 
-  // 2. HLS (VOD spécifique)
+  // Fallback HLS
   if (kind === "hls") {
     const Hls = (await import("hls.js")).default;
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: false,
+        lowLatencyMode: true,
+        backBufferLength: 10,
+      });
+
+      hls.on(Hls.Events.ERROR, (_e, data) => {
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+        else hls.destroy();
       });
 
       hls.loadSource(opts.url);
@@ -77,7 +90,7 @@ export async function attach(
     }
   }
 
-  // 3. Native (MP4)
+  // Native MP4
   video.src = opts.url;
   return {
     kind: "native",
